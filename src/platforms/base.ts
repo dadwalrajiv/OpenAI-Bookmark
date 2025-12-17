@@ -5,16 +5,11 @@ export abstract class BasePlatform implements PlatformAdapter {
   
   abstract detectPlatform(): boolean;
   abstract getMessages(): Message[];
-  abstract getConversationId(): string;
-  abstract injectBookmarkButton(message: Message, onClick: (message: Message) => void): void;
+  abstract injectBookmarkButton(message: Message, onClick: (message: Message) => void, isBookmarked: boolean): void;  // ADD isBookmarked param
   abstract scrollToMessage(messageId: string): void;
-  
-  // Common utility methods
-  protected generateMessageId(element: HTMLElement): string {
-    return `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  }
+  abstract getConversationId(): string;
   
   protected extractText(element: HTMLElement): string {
-    return element.innerText || element.textContent || '';
+    return element.textContent || '';
   }
 }

@@ -14,6 +14,7 @@ let currentPlatform: PlatformAdapter | null = null;
 let observer: MutationObserver | null = null;
 let injectionTimeout: NodeJS.Timeout | null = null;
 let processedMessageIds = new Set<string>(); // Track which messages we've already processed
+let bookmarkedMessageIds = new Set<string>();
 let lastUrl = window.location.href;
 
 async function handleBookmarkClick(message: Message) {
@@ -49,39 +50,96 @@ async function handleBookmarkClick(message: Message) {
   };
   
   console.log('💾 Saving bookmark:', bookmark);
-  
   try {
-    await BookmarkStorage.save(bookmark);
+  await BookmarkStorage.save(bookmark);
+  
+  // Add to tracked set
+  bookmarkedMessageIds.add(message.id);
+  
+  // Find the bookmark button - platform-specific search
+  let button: Element | null = null;
+  
+  // Try direct child first
+  button = message.element.querySelector('.bookmark-button');
+  
+  if (!button) {
+    // For ChatGPT/Claude: search in parent/ancestor containers
+    let searchElement: HTMLElement | null = message.element;
+    let attempts = 0;
     
-    const button = message.element.querySelector('.bookmark-button');
-    if (button) {
-      const iconContainer = button.querySelector('span span');
-      if (iconContainer) {
-        iconContainer.textContent = '✅';
-        
-        setTimeout(() => {
-          iconContainer.textContent = '📌';
-        }, 2000);
+    // Go up 10 levels max
+    while (searchElement && attempts < 10) {
+      button = searchElement.querySelector('.bookmark-button');
+      if (button) {
+        console.log(`✅ Found button at level ${attempts + 1}`);
+        break;
       }
+      searchElement = searchElement.parentElement;
+      attempts++;
+    }
+  }
+  
+  if (button) {
+    // Find the icon container
+    let iconContainer: HTMLElement | null = button.querySelector('div');
+    if (!iconContainer) {
+      iconContainer = button.querySelector('span span');
+    }
+    if (!iconContainer) {
+      iconContainer = button.querySelector('span');
     }
     
-    console.log('✅ Bookmark saved successfully!');
-    
-    window.dispatchEvent(new CustomEvent('bookmarkAdded', { detail: bookmark }));
-    
-  } catch (error) {
-    console.error('❌ Error saving bookmark:', error);
-    alert('Failed to save bookmark. Please try again.');
+    if (iconContainer) {
+      // Change icon immediately
+      iconContainer.textContent = '🔖';
+      
+      // Update attributes
+      button.setAttribute('aria-label', 'Bookmarked');
+      button.setAttribute('title', 'Bookmarked');
+      
+      // Make non-clickable
+      (button as HTMLButtonElement).style.cursor = 'default';
+      (button as HTMLButtonElement).style.opacity = '0.8';
+      
+      // Remove all event listeners by cloning and replacing
+      const newButton = button.cloneNode(true) as HTMLElement;
+      button.parentNode?.replaceChild(newButton, button);
+      
+      console.log('✅ Button updated to bookmarked state');
+    } else {
+      console.warn('⚠️ Could not find icon container to update');
+    }
+  } else {
+    console.warn('⚠️ Could not find bookmark button after searching 10 levels up');
   }
+  
+  console.log('✅ Bookmark saved successfully!');
+  
+  window.dispatchEvent(new CustomEvent('bookmarkAdded', { detail: bookmark }));
+  
+} catch (error) {
+  console.error('❌ Error saving bookmark:', error);
+  alert('Failed to save bookmark. Please try again.');
+}
+  
 }
 
 function handleSidebarBookmarkClick(bookmark: Bookmark) {
   console.log('🎯 Sidebar bookmark clicked:', bookmark.id);
+  console.log('📍 Looking for message with ID:', bookmark.messageId);
   
   if (!currentPlatform) {
     console.warn('⚠️  Platform not initialized');
     return;
   }
+  
+  // Debug: Show all current message IDs in DOM
+  const allMessageElements = document.querySelectorAll('[data-message-id]');
+  console.log(`🔍 Total messages with IDs in DOM: ${allMessageElements.length}`);
+  allMessageElements.forEach((el, idx) => {
+    const id = el.getAttribute('data-message-id');
+    console.log(`  ${idx + 1}. ${id}`);
+  });
   
   currentPlatform.scrollToMessage(bookmark.messageId);
 }
@@ -95,24 +153,31 @@ function injectBookmarkButtons(platform: PlatformAdapter) {
   
   let injectedCount = 0;
   messages.forEach(message => {
-    // Skip if we've already processed this message
-    if (processedMessageIds.has(message.id)) {
+    // ONLY inject on user messages (not assistant)
+    if (message.role !== 'user') {
       return;
     }
     
-    // Check if button already exists in DOM
-    if (!message.element.querySelector('.bookmark-button')) {
-      platform.injectBookmarkButton(message, handleBookmarkClick);
-      processedMessageIds.add(message.id);
-      injectedCount++;
-    } else {
-      // Button exists, mark as processed
-      processedMessageIds.add(message.id);
+    const alreadyProcessed = processedMessageIds.has(message.id);
+    const buttonExists = message.element.querySelector('.bookmark-button') !== null;
+    
+    if (alreadyProcessed || buttonExists) {
+      if (!alreadyProcessed) {
+        processedMessageIds.add(message.id);
+      }
+      return;
     }
+    
+    // Check if this message is already bookmarked
+    const isBookmarked = bookmarkedMessageIds.has(message.id);
+    
+    platform.injectBookmarkButton(message, handleBookmarkClick, isBookmarked);  // PASS isBookmarked
+    processedMessageIds.add(message.id);
+    injectedCount++;
   });
   
   if (injectedCount > 0) {
-    console.log(`📌 Injected ${injectedCount} new bookmark buttons (total tracked: ${processedMessageIds.size})`);
+    console.log(`📌 Injected ${injectedCount} new bookmark buttons`);
   }
   
   return injectedCount;
@@ -244,14 +309,16 @@ function handleUrlChange() {
 async function loadBookmarksForConversation(conversationId: string) {
   try {
     const bookmarks = await BookmarkStorage.getByConversation(conversationId);
-    console.log(`📖 Loaded ${bookmarks.length} bookmarks for conversation: ${conversationId}`);
+    console.log(`📖 Found ${bookmarks.length} existing bookmarks for this conversation`);
     
-    if (bookmarks.length > 0) {
-      console.log('Bookmark details:');
-      bookmarks.forEach((bookmark, index) => {
-        console.log(`  ${index + 1}. [${bookmark.platform}] "${bookmark.note || 'No note'}" - ${new Date(bookmark.timestamp).toLocaleString()}`);
-      });
-    }
+    // Store bookmarked message IDs in Set for quick lookup
+    bookmarkedMessageIds.clear();
+    bookmarks.forEach(bookmark => {
+      bookmarkedMessageIds.add(bookmark.messageId);
+    });
+    
+    console.log(`🔖 Tracking ${bookmarkedMessageIds.size} bookmarked messages`);
+    
   } catch (error) {
     console.error('❌ Error loading bookmarks:', error);
   }

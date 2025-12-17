@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Icon Generator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #f0f0f0;
+        }
+        .icon-preview {
+            display: inline-block;
+            margin: 20px;
+            text-align: center;
+        }
+        .icon {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 20%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 10px auto;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .icon-16 { width: 16px; height: 16px; font-size: 12px; }
+        .icon-48 { width: 48px; height: 48px; font-size: 36px; }
+        .icon-128 { width: 128px; height: 128px; font-size: 96px; }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px;
+        }
+        button:hover {
+            background: #5568d3;
+        }
+        #instructions {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+            max-width: 600px;
+        }
+    </style>
+</head>
+<body>
+    <h1>AI Chat Bookmarks - Icon Generator</h1>
+    
+    <div class="icon-preview">
+        <h3>16x16</h3>
+        <canvas id="icon16" class="icon icon-16"></canvas>
+        <br>
+        <button onclick="downloadIcon('icon16', 16)">Download</button>
+    </div>
+    
+    <div class="icon-preview">
+        <h3>48x48</h3>
+        <canvas id="icon48" class="icon icon-48"></canvas>
+        <br>
+        <button onclick="downloadIcon('icon48', 48)">Download</button>
+    </div>
+    
+    <div class="icon-preview">
+        <h3>128x128</h3>
+        <canvas id="icon128" class="icon icon-128"></canvas>
+        <br>
+        <button onclick="downloadIcon('icon128', 128)">Download</button>
+    </div>
+
+    <div id="instructions">
+        <h3>Instructions:</h3>
+        <ol>
+            <li>Click "Download" under each icon size</li>
+            <li>Save them as: <code>icon16.png</code>, <code>icon48.png</code>, <code>icon128.png</code></li>
+            <li>Move all three files to the <code>icons/</code> folder in your project</li>
+            <li>Run <code>npm run build</code></li>
+            <li>Your extension is ready to publish!</li>
+        </ol>
+    </div>
+
+    <script>
+        function drawIcon(canvasId, size) {
+            const canvas = document.getElementById(canvasId);
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            
+            // Gradient background
+            const gradient = ctx.createLinearGradient(0, 0, size, size);
+            gradient.addColorStop(0, '#667eea');
+            gradient.addColorStop(1, '#764ba2');
+            
+            // Draw rounded rectangle background
+            const radius = size * 0.2;
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.moveTo(radius, 0);
+            ctx.lineTo(size - radius, 0);
+            ctx.quadraticCurveTo(size, 0, size, radius);
+            ctx.lineTo(size, size - radius);
+            ctx.quadraticCurveTo(size, size, size - radius, size);
+            ctx.lineTo(radius, size);
+            ctx.quadraticCurveTo(0, size, 0, size - radius);
+            ctx.lineTo(0, radius);
+            ctx.quadraticCurveTo(0, 0, radius, 0);
+            ctx.fill();
+            
+            // Draw pin emoji
+            ctx.font = `${size * 0.7}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('📌', size / 2, size / 2);
+        }
+        
+        function downloadIcon(canvasId, size) {
+            const canvas = document.getElementById(canvasId);
+            const link = document.createElement('a');
+            link.download = `icon${size}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }
+        
+        // Draw all icons on load
+        window.onload = function() {
+            drawIcon('icon16', 16);
+            drawIcon('icon48', 48);
+            drawIcon('icon128', 128);
+        };
+    </script>
+</body>
+</html>

@@ -10,7 +10,7 @@ export interface PlatformAdapter {
   name: string;
   detectPlatform(): boolean;
   getMessages(): Message[];
-  getConversationId(): string;
-  injectBookmarkButton(message: Message, onClick: (message: Message) => void): void;
+  injectBookmarkButton(message: Message, onClick: (message: Message) => void, isBookmarked: boolean): void;  // ADD isBookmarked param
   scrollToMessage(messageId: string): void;
+  getConversationId(): string;
 }

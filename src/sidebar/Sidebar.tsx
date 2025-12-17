@@ -38,12 +38,22 @@ export const Sidebar: React.FC<SidebarProps> = ({ conversationId, onBookmarkClic
   }, [conversationId]);
 
   const loadBookmarks = async () => {
-    console.log('🔄 Sidebar loading bookmarks for:', conversationId);
-    const loaded = await BookmarkStorage.getByConversation(conversationId);
-    loaded.sort((a, b) => b.timestamp - a.timestamp);
-    setBookmarks(loaded);
-    console.log(`📚 Sidebar loaded ${loaded.length} bookmarks`);
-  };
+  console.log('🔄 Sidebar loading bookmarks for:', conversationId);
+  const loaded = await BookmarkStorage.getByConversation(conversationId);
+  loaded.sort((a, b) => b.timestamp - a.timestamp);
+  
+  // DEBUG: Log all bookmark details
+  console.log(`📚 Loaded ${loaded.length} bookmarks:`);
+  loaded.forEach((b, i) => {
+    console.log(`\n  Bookmark ${i + 1}:`);
+    console.log(`    ID: ${b.id}`);
+    console.log(`    MessageID: ${b.messageId}`);
+    console.log(`    Note: ${b.note}`);
+    console.log(`    Text: ${b.messageText.substring(0, 50)}...`);
+  });
+  
+  setBookmarks(loaded);
+};
 
   const handleDelete = async (bookmarkId: string, e: React.MouseEvent) => {
     e.stopPropagation();

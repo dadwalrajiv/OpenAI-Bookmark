@@ -24,8 +24,15 @@ export class ClaudePlatform extends BasePlatform {
       const text = this.extractText(htmlElement).trim();
       
       if (text.length > 0) {
-        // Create stable ID based on content hash and position
-        const messageId = this.generateStableMessageId('user', text, index);
+        // Check if element already has our stable ID
+        let messageId = htmlElement.getAttribute('data-message-id');
+        
+        // Only generate new ID if element doesn't have one
+        if (!messageId) {
+          messageId = this.generateStableMessageId('user', text);
+          htmlElement.setAttribute('data-message-id', messageId);
+          console.log(`🆕 Generated new ID for user message: ${messageId}`);
+        }
         
         const message: Message = {
           id: messageId,
@@ -34,9 +41,6 @@ export class ClaudePlatform extends BasePlatform {
           role: 'user',
           timestamp: Date.now()
         };
-        
-        // Store reference for later lookup
-        htmlElement.setAttribute('data-message-id', messageId);
         
         messages.push(message);
       }
@@ -50,8 +54,15 @@ export class ClaudePlatform extends BasePlatform {
       const text = this.extractText(targetElement as HTMLElement).trim();
       
       if (text.length > 10) {
-        // Create stable ID based on content hash and position
-        const messageId = this.generateStableMessageId('assistant', text, index);
+        // Check if element already has our stable ID
+        let messageId = htmlElement.getAttribute('data-message-id');
+        
+        // Only generate new ID if element doesn't have one
+        if (!messageId) {
+          messageId = this.generateStableMessageId('assistant', text);
+          htmlElement.setAttribute('data-message-id', messageId);
+          console.log(`🆕 Generated new ID for assistant message: ${messageId}`);
+        }
         
         const message: Message = {
           id: messageId,
@@ -60,9 +71,6 @@ export class ClaudePlatform extends BasePlatform {
           role: 'assistant',
           timestamp: Date.now()
         };
-        
-        // Store reference for later lookup
-        htmlElement.setAttribute('data-message-id', messageId);
         
         messages.push(message);
       }
@@ -79,13 +87,19 @@ export class ClaudePlatform extends BasePlatform {
   }
   
   /**
-   * Generate a stable message ID based on role, content, and position
-   * This ensures the same message gets the same ID across page refreshes
+   * Generate a truly stable message ID based ONLY on content
+   * No index - IDs remain the same regardless of message position
    */
-  private generateStableMessageId(role: string, text: string, index: number): string {
-    // Use first 100 chars of text + position to create a stable hash
-    const contentHash = this.simpleHash(text.substring(0, 100));
-    return `${role}_${index}_${contentHash}`;
+  private generateStableMessageId(role: string, text: string): string {
+    // Use first 300 chars for better uniqueness (was 100)
+    const contentSample = text.substring(0, 300);
+    const contentHash = this.simpleHash(contentSample);
+    
+    // Add first 20 chars (alphanumeric only) as extra uniqueness
+    const prefix = text.substring(0, 20).replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    
+    // Format: role_prefix_hash
+    return `${role}_${prefix}_${contentHash}`;
   }
   
   /**
@@ -106,48 +120,103 @@ export class ClaudePlatform extends BasePlatform {
     return match ? match[1] : 'unknown';
   }
   
- injectBookmarkButton(message: Message, onClick: (message: Message) => void): void {
+  injectBookmarkButton(message: Message, onClick: (message: Message) => void, isBookmarked: boolean): void {
+  // Check if button already exists
   if (message.element.querySelector('.bookmark-button')) {
     return;
   }
   
-  const actionBar = message.element.querySelector('[role="group"][aria-label="Message actions"]');
+  // The action bar is not directly on the message element
+  // We need to traverse up the DOM tree to find it
+  let searchElement: HTMLElement | null = message.element;
+  let actionBar: HTMLElement | null = null;
+  let attempts = 0;
+  
+  // Go up 5 levels max looking for the action bar
+  while (searchElement && attempts < 5) {
+    // Look in current element
+    actionBar = searchElement.querySelector('[role="group"][aria-label="Message actions"]');
+    if (actionBar) break;
+    
+    // Look in siblings
+    let sibling = searchElement.nextElementSibling;
+    while (sibling) {
+      if (sibling.getAttribute('role') === 'group' && 
+          sibling.getAttribute('aria-label') === 'Message actions') {
+        actionBar = sibling as HTMLElement;
+        break;
+      }
+      sibling = sibling.nextElementSibling;
+    }
+    
+    if (actionBar) break;
+    
+    // Move up one level
+    searchElement = searchElement.parentElement;
+    attempts++;
+  }
   
   if (!actionBar) {
     console.warn('Could not find action bar for message:', message.id);
     return;
   }
   
+  // Find the button container
+  const buttonContainer = actionBar.querySelector('.flex.items-center');
+  
+  if (!buttonContainer) {
+    // Use the action bar itself as fallback
+    this.createAndInsertButton(actionBar, onClick, message, isBookmarked);
+    return;
+  }
+  
+  this.createAndInsertButton(buttonContainer, onClick, message, isBookmarked);
+}
+
+private createAndInsertButton(
+  container: Element, 
+  onClick: (message: Message) => void, 
+  message: Message,
+  isBookmarked: boolean
+): void {
   const button = document.createElement('button');
   button.className = 'bookmark-button inline-flex items-center justify-center relative shrink-0 select-none border-transparent transition font-base duration-300 h-8 w-8 rounded-md active:scale-95 group';
   button.type = 'button';
-  button.setAttribute('aria-label', 'Bookmark this message');
-  button.style.cssText = 'cursor: pointer; opacity: 0.6; transition: opacity 0.2s;';
   
-  button.addEventListener('mouseenter', () => {
-    button.style.opacity = '1';
-  });
-  button.addEventListener('mouseleave', () => {
-    button.style.opacity = '0.6';
-  });
+  // Set different attributes based on bookmarked state
+  if (isBookmarked) {
+    button.setAttribute('aria-label', 'Bookmarked');
+    button.setAttribute('title', 'Bookmarked');
+    button.style.cssText = 'cursor: default; opacity: 0.8;';
+  } else {
+    button.setAttribute('aria-label', 'Bookmark this message');
+    button.setAttribute('title', 'Bookmark this message');
+    button.style.cssText = 'cursor: pointer; opacity: 0.6; transition: opacity 0.2s;';
+    
+    // Only add hover effect if not bookmarked
+    button.onmouseenter = () => {
+      button.style.opacity = '1';
+    };
+    
+    button.onmouseleave = () => {
+      button.style.opacity = '0.6';
+    };
+    
+    // Only add click handler if not bookmarked
+    button.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      onClick(message);
+    });
+  }
   
-  // Create icon using DOM instead of innerHTML (safer)
   const iconContainer = document.createElement('div');
   iconContainer.className = 'flex items-center justify-center';
   iconContainer.style.cssText = 'width: 20px; height: 20px; font-size: 16px;';
-  iconContainer.textContent = '📌'; // textContent is XSS-safe
+  iconContainer.textContent = isBookmarked ? '🔖' : '📌';
+  
   button.appendChild(iconContainer);
-  
-  button.addEventListener('click', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    onClick(message);
-  });
-  
-  const firstAction = actionBar.querySelector('div[data-state]');
-  if (firstAction && firstAction.parentElement) {
-    firstAction.parentElement.insertBefore(button, firstAction);
-  }
+  container.insertBefore(button, container.firstChild);
 }
   
  scrollToMessage(messageId: string): void {

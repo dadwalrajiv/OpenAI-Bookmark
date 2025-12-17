@@ -26,8 +26,15 @@ export class ChatGPTPlatform extends BasePlatform {
       const text = this.extractText(htmlElement).trim();
       
       if (text.length > 0) {
-        const nativeId = htmlElement.getAttribute('data-message-id');
-        const messageId = nativeId || this.generateStableMessageId('user', text, index);
+        // Check if element already has our stable ID
+        let messageId = htmlElement.getAttribute('data-message-id');
+        
+        // Only generate new ID if element doesn't have one
+        if (!messageId) {
+          messageId = this.generateStableMessageId('user', text);
+          htmlElement.setAttribute('data-message-id', messageId);
+          console.log(`🆕 Generated new ID for user message: ${messageId}`);
+        }
         
         const message: Message = {
           id: messageId,
@@ -37,7 +44,6 @@ export class ChatGPTPlatform extends BasePlatform {
           timestamp: Date.now()
         };
         
-        htmlElement.setAttribute('data-message-id', messageId);
         messages.push(message);
       }
     });
@@ -48,8 +54,15 @@ export class ChatGPTPlatform extends BasePlatform {
       const text = this.extractText(htmlElement).trim();
       
       if (text.length > 10) {
-        const nativeId = htmlElement.getAttribute('data-message-id');
-        const messageId = nativeId || this.generateStableMessageId('assistant', text, index);
+        // Check if element already has our stable ID
+        let messageId = htmlElement.getAttribute('data-message-id');
+        
+        // Only generate new ID if element doesn't have one
+        if (!messageId) {
+          messageId = this.generateStableMessageId('assistant', text);
+          htmlElement.setAttribute('data-message-id', messageId);
+          console.log(`🆕 Generated new ID for assistant message: ${messageId}`);
+        }
         
         const message: Message = {
           id: messageId,
@@ -59,7 +72,6 @@ export class ChatGPTPlatform extends BasePlatform {
           timestamp: Date.now()
         };
         
-        htmlElement.setAttribute('data-message-id', messageId);
         messages.push(message);
       }
     });
@@ -74,9 +86,20 @@ export class ChatGPTPlatform extends BasePlatform {
     return messages;
   }
   
-  private generateStableMessageId(role: string, text: string, index: number): string {
-    const contentHash = this.simpleHash(text.substring(0, 100));
-    return `${role}_${index}_${contentHash}`;
+  /**
+   * Generate a truly stable message ID based ONLY on content
+   * No index - IDs remain the same regardless of message position
+   */
+  private generateStableMessageId(role: string, text: string): string {
+    // Use first 300 chars for better uniqueness (was 100)
+    const contentSample = text.substring(0, 300);
+    const contentHash = this.simpleHash(contentSample);
+    
+    // Add first 20 chars (alphanumeric only) as extra uniqueness
+    const prefix = text.substring(0, 20).replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    
+    // Format: role_prefix_hash
+    return `${role}_${prefix}_${contentHash}`;
   }
   
   private simpleHash(str: string): string {
@@ -94,66 +117,82 @@ export class ChatGPTPlatform extends BasePlatform {
     return match ? match[1] : 'chatgpt_' + Date.now();
   }
   
-  injectBookmarkButton(message: Message, onClick: (message: Message) => void): void {
-    console.log('🔍 Attempting to inject button for:', message.id);
+  injectBookmarkButton(message: Message, onClick: (message: Message) => void, isBookmarked: boolean): void {
+  if (message.element.querySelector('.bookmark-button')) {
+    return;
+  }
+  
+  // ChatGPT structure: message is inside a turn container
+  // Action bar is a sibling with buttons
+  const turnContainer = message.element.closest('[tabindex="-1"]');
+  if (!turnContainer) {
+    console.warn('❌ No turn container found');
+    return;
+  }
+  
+  // Find all divs in turn container
+  const allDivs = turnContainer.querySelectorAll('div');
+  let actionBar: HTMLElement | null = null;
+  
+  for (let index = 0; index < allDivs.length; index++) {
+    const div = allDivs[index] as HTMLElement;
+    const hasButtons = div.querySelectorAll('button').length > 0;
     
-    if (message.element.querySelector('.bookmark-button')) {
-      console.log('⏭️  Button already exists');
-      return;
+    if (hasButtons) {
+      const hasCopyButton = div.querySelector('[aria-label*="Copy"]');
+      if (hasCopyButton && !actionBar) {
+        actionBar = div;
+        break;
+      }
     }
-    
-    // Find the parent turn container
-    const turnContainer = message.element.closest('.group\\/turn-messages');
-    if (!turnContainer) {
-      console.warn('❌ No turn container found');
-      return;
-    }
-    
-    // Find the action bar - it's the next sibling div after the message
-    const actionBar = turnContainer.querySelector('.z-0.flex');
-    
-    if (!actionBar) {
-      console.warn('❌ Could not find action bar');
-      return;
-    }
-    
-    console.log('✅ Found action bar:', actionBar);
-    
-    const button = document.createElement('button');
-    button.className = 'bookmark-button text-token-text-secondary hover:bg-token-bg-secondary rounded-lg';
-    button.type = 'button';
+  }
+  
+  if (!actionBar) {
+    console.warn('❌ Could not find action bar');
+    return;
+  }
+  
+  const button = document.createElement('button');
+  button.className = 'bookmark-button text-token-text-secondary hover:bg-token-bg-secondary rounded-lg';
+  button.type = 'button';
+  
+  // Set different attributes based on bookmarked state
+  if (isBookmarked) {
+    button.setAttribute('aria-label', 'Bookmarked');
+    button.setAttribute('title', 'Bookmarked');
+    button.style.cssText = 'cursor: default;';
+  } else {
     button.setAttribute('aria-label', 'Bookmark this message');
-    button.setAttribute('data-state', 'closed');
+    button.setAttribute('title', 'Bookmark this message');
+    button.style.cssText = 'cursor: pointer;';
     
-    const span = document.createElement('span');
-    span.className = 'flex items-center justify-center touch:w-10 h-8 w-8';
-    
-    const iconText = document.createElement('span');
-    iconText.textContent = '📌';
-    iconText.style.cssText = 'font-size: 16px;';
-    
-    span.appendChild(iconText);
-    button.appendChild(span);
-    
+    // Only add click handler if not bookmarked
     button.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
       onClick(message);
     });
-    
-    // Find the button container inside action bar
-    const buttonContainer = actionBar.querySelector('div[class*="flex-wrap"]');
-    const firstButton = buttonContainer?.querySelector('button') || actionBar.querySelector('button');
-    
-    console.log('First button:', firstButton);
-    
-    if (firstButton && firstButton.parentElement) {
-      firstButton.parentElement.insertBefore(button, firstButton);
-      console.log('✅ Bookmark button injected!');
-    } else {
-      console.warn('❌ Could not find first button');
-    }
   }
+  
+  const span = document.createElement('span');
+  span.className = 'flex items-center justify-center touch:w-10 h-8 w-8';
+  
+  const iconText = document.createElement('span');
+  iconText.textContent = isBookmarked ? '🔖' : '📌';
+  iconText.style.cssText = 'font-size: 16px;';
+  
+  span.appendChild(iconText);
+  button.appendChild(span);
+  
+  // Insert before first button in action bar
+  const firstButton = actionBar.querySelector('button');
+  
+  if (firstButton && firstButton.parentElement) {
+    firstButton.parentElement.insertBefore(button, firstButton);
+  } else {
+    console.warn('❌ Could not find first button');
+  }
+}
   
  scrollToMessage(messageId: string): void {
   console.log('📜 Scrolling to message:', messageId);
