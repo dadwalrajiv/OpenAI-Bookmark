@@ -63,11 +63,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ conversationId, onBookmarkClic
       loadBookmarks();
     }
   };
-
-  const handleProClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    window.open('https://forms.gle/EFs2979syabnmGad8', '_blank');
-  };
+  
 
   const filteredBookmarks = bookmarks.filter(b => 
     b.note.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -125,27 +121,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ conversationId, onBookmarkClic
             }}>
               {bookmarks.length}
             </div>
-          )}
-          
-          {/* NEW: Small PRO badge on floating button */}
-          <div
-            onClick={handleProClick}
-            style={{
-              position: 'absolute',
-              bottom: '-8px',
-              backgroundColor: '#FFD700',
-              color: '#000',
-              borderRadius: '8px',
-              padding: '2px 6px',
-              fontSize: '9px',
-              fontWeight: '700',
-              border: '2px solid #2a2a2a',
-              cursor: 'pointer',
-            }}
-            title="Get Pro features"
-          >
-            PRO
-          </div>
+          )}          
+        
+        
         </div>
       )}
 
@@ -351,7 +329,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ conversationId, onBookmarkClic
             )}
           </div>
 
-          {/* NEW: Pro CTA at bottom */}
+         
           <div
             style={{
               borderTop: '1px solid #333',
@@ -365,33 +343,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ conversationId, onBookmarkClic
               fontSize: '11px',
               marginBottom: '8px',
             }}>
-              ☁️ Want cloud sync & unlimited bookmarks?
+              
             </div>
-            <button
-              onClick={handleProClick}
-              style={{
-                width: '100%',
-                padding: '8px',
-                backgroundColor: '#FFD700',
-                color: '#000',
-                border: 'none',
-                borderRadius: '4px',
-                fontSize: '12px',
-                fontWeight: '600',
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = '#FFC700';
-                e.currentTarget.style.transform = 'scale(1.02)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = '#FFD700';
-                e.currentTarget.style.transform = 'scale(1)';
-              }}
-            >
-              ⭐ Join Pro Waitlist
-            </button>
+           
           </div>
         </div>
       )}
