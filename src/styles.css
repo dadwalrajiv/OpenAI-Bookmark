@@ -1,0 +1,75 @@
+/* AI Chat Bookmarks - Global Styles */
+
+/* ===================================
+   GEMINI SPECIFIC STYLES
+   =================================== */
+
+/* Hide ALL Gemini bookmark buttons by default - use !important to override inline styles */
+.user-query-container .bookmark-button {
+  opacity: 0 !important;
+  transition: opacity 0.2s ease;
+}
+
+/* Show buttons on message hover */
+.user-query-container:hover .bookmark-button {
+  opacity: 1 !important;
+}
+
+/* Bookmarked buttons shown on hover should be slightly dimmed */
+.user-query-container:hover .bookmark-button[aria-label="Bookmarked"] {
+  opacity: 0.6 !important;
+}
+
+/* ===================================
+   COPILOT SPECIFIC STYLES
+   =================================== */
+
+
+/* Enable pointer events on message containers */
+[id$="-user-message"] {
+  pointer-events: auto !important;
+}
+
+/* Hide button containers by default */
+[id$="-user-message"] .copilot-bookmark-container {
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+/* Show button container on message hover */
+[id$="-user-message"]:hover .copilot-bookmark-container {
+  opacity: 1 !important;
+}
+
+/* Bookmarked buttons shown on hover should be slightly dimmed */
+[id$="-user-message"]:hover .bookmark-button[aria-label="Bookmarked"] {
+  opacity: 0.6 !important;
+}
+
+/* ===================================
+   CHATGPT SPECIFIC STYLES
+   =================================== */
+
+/* ChatGPT buttons already hidden by their own CSS */
+/* No additional styles needed - they work correctly */
+
+/* ===================================
+   CLAUDE SPECIFIC STYLES  
+   =================================== */
+
+/* Claude buttons already hidden by their own CSS */
+/* No additional styles needed - they work correctly */
+
+/* ===================================
+   SHARED STYLES (All Platforms)
+   =================================== */
+
+/* Ensure bookmark buttons don't interfere with page layout */
+.bookmark-button {
+  flex-shrink: 0;
+}
+
+/* Smooth transition for bookmarked state */
+.bookmark-button[aria-label="Bookmarked"] {
+  pointer-events: none;
+}

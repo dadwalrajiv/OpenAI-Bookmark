@@ -35,7 +35,7 @@ export class BookmarkStorage {
     }
     
     // Check platform is allowed
-    const allowedPlatforms = ['claude', 'chatgpt'];
+    const allowedPlatforms = ['claude', 'chatgpt', 'gemini', 'copilot'];
     if (!allowedPlatforms.includes(bookmark.platform)) {
       console.error('❌ Invalid bookmark: unknown platform', bookmark.platform);
       return false;

@@ -1,4 +1,4 @@
-export type PlatformType = 'claude' | 'chatgpt' | 'unknown';
+export type PlatformType = 'claude' | 'chatgpt' | 'gemini' | 'copilot' | 'unknown';
 
 export class PlatformDetector {
   static detect(): PlatformType {
@@ -10,6 +10,14 @@ export class PlatformDetector {
     
     if (hostname === 'chatgpt.com' || hostname === 'chat.openai.com') {
       return 'chatgpt';
+    }
+    
+    if (hostname === 'gemini.google.com') {
+      return 'gemini';
+    }
+
+     if (hostname === 'copilot.microsoft.com') {
+      return 'copilot';
     }
     
     return 'unknown';
