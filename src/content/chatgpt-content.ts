@@ -6,7 +6,8 @@ import {
   handleSidebarBookmarkClick,
   loadBookmarksForConversation,
   bookmarkedMessageIds,
-  bookmarkButtonExists  
+  bookmarkButtonExists,
+  getBookmark  // ADD THIS
 } from './shared/base-content';
 import {
   safeExecute,
@@ -16,7 +17,7 @@ import {
   safeMutationCallback
 } from './shared/error-handler';
 
-console.log('🔖 AI Chat Bookmarks - ChatGPT loaded!');
+//console.log('🔖 AI Chat Bookmarks - ChatGPT loaded!');
 
 // Setup global error handler first
 setupGlobalErrorHandler('ChatGPT');
@@ -63,7 +64,6 @@ function injectBookmarkButtons(platform: PlatformAdapter): number {
           return;
         }
         
-        // IMPROVED: Use comprehensive button existence check
         if (bookmarkButtonExists(message.element)) {
           if (!processedMessageIds.has(message.id)) {
             processedMessageIds.add(message.id);
@@ -71,15 +71,15 @@ function injectBookmarkButtons(platform: PlatformAdapter): number {
           return;
         }
         
-        const isBookmarked = bookmarkedMessageIds.has(message.id);
-        
+        //const isBookmarked = bookmarkedMessageIds.has(message.id);
+         const bookmark = getBookmark(message.id);
         platform.injectBookmarkButton(
           message,
           (msg) => safeExecuteAsync(
             () => handleBookmarkClick(msg, platform, updateButtonToChatGPTBookmarkedState),
             'ChatGPT Bookmark Click'
           ),
-          isBookmarked
+          bookmark  
         );
         
         processedMessageIds.add(message.id);
@@ -90,7 +90,7 @@ function injectBookmarkButtons(platform: PlatformAdapter): number {
     });
     
     if (injectedCount > 0) {
-      console.log(`📌 Injected ${injectedCount} new bookmark buttons`);
+      //console.log(`📌 Injected ${injectedCount} new bookmark buttons`);
     }
     
     return injectedCount;
@@ -119,86 +119,78 @@ function setupMutationObserver(platform: PlatformAdapter): void {
       subtree: true
     });
     
-    console.log('👁️  MutationObserver active - watching for new messages');
+    //console.log('👁️  MutationObserver active - watching for new messages');
   }, 'ChatGPT MutationObserver Setup');
 }
 
 /**
- * Initialize ChatGPT extension
+ * Initialize ChatGPT extension - ASYNC VERSION
  */
-function initializeExtension(): void {
-  safeExecute(() => {
-    const platform = new ChatGPTPlatform();
+async function initializeExtension(): Promise<void> {
+  const platform = new ChatGPTPlatform();
+  
+  if (!platform.detectPlatform()) {
+    console.log('❌ Not on ChatGPT');
+    return;
+  }
+  
+  currentPlatform = platform;
+  //console.log('✅ ChatGPT platform initialized');
+  
+  const conversationId = platform.getConversationId();
+  //console.log(`📝 Conversation ID: ${conversationId}`);
+  
+  // LOAD BOOKMARKS FIRST
+  await safeExecuteAsync(
+    () => loadBookmarksForConversation(conversationId),
+    'ChatGPT Load Bookmarks'
+  );
+  
+  const attemptInjection = () => {
+    const initialCount = injectBookmarkButtons(platform);
+    const totalMessages = platform.getMessages().length;
+    //console.log(`💬 Found ${totalMessages} messages, injected ${initialCount} buttons`);
+    return totalMessages;
+  };
+  
+  let totalMessages = attemptInjection();
+  
+  if (totalMessages === 0) {
+    console.log('⏳ No messages found yet, setting up retry logic...');
     
-    if (!platform.detectPlatform()) {
-      console.log('❌ Not on ChatGPT');
-      return;
-    }
+    let retryCount = 0;
+    const maxRetries = 10;
+    const retryIntervals = [500, 1000, 1000, 2000, 2000, 3000, 3000, 5000, 5000, 5000];
     
-    currentPlatform = platform;
-    console.log('✅ ChatGPT platform initialized');
-    
-    const conversationId = platform.getConversationId();
-    console.log(`📝 Conversation ID: ${conversationId}`);
-    
-    const attemptInjection = () => {
-      const initialCount = injectBookmarkButtons(platform);
-      const totalMessages = platform.getMessages().length;
-      console.log(`💬 Found ${totalMessages} messages, injected ${initialCount} buttons`);
-      return totalMessages;
+    const retry = () => {
+      if (retryCount >= maxRetries) {
+        console.log('⚠️ Gave up after 10 retries');
+        return;
+      }
+      
+      const delay = retryIntervals[retryCount];
+      retryCount++;
+      
+      setTimeout(() => {
+       // console.log(`🔄 Retry ${retryCount}/${maxRetries}`);
+        totalMessages = attemptInjection();
+        
+        if (totalMessages > 0) {
+          //console.log(`✅ Success! Found ${totalMessages} messages`);
+        } else {
+          retry();
+        }
+      }, delay);
     };
     
-    let totalMessages = attemptInjection();
-    
-    if (totalMessages === 0) {
-      console.log('⏳ No messages found yet, setting up retry logic...');
-      
-      let retryCount = 0;
-      const maxRetries = 10;
-      const retryIntervals = [500, 1000, 1000, 2000, 2000, 3000, 3000, 5000, 5000, 5000];
-      
-      const retry = () => {
-        safeExecute(() => {
-          if (retryCount >= maxRetries) {
-            console.log('⚠️ Gave up after 10 retries');
-            return;
-          }
-          
-          const delay = retryIntervals[retryCount];
-          retryCount++;
-          
-          setTimeout(() => {
-            console.log(`🔄 Retry ${retryCount}/${maxRetries}`);
-            totalMessages = attemptInjection();
-            
-            if (totalMessages > 0) {
-              console.log(`✅ Success! Found ${totalMessages} messages`);
-            } else {
-              retry();
-            }
-          }, delay);
-        }, 'ChatGPT Retry Logic');
-      };
-      
-      retry();
-    }
-    
-    setupMutationObserver(platform);
-    
-    safeExecute(() => {
-      injectSidebar(conversationId, (bookmark) => 
-        safeExecute(
-          () => handleSidebarBookmarkClick(bookmark, currentPlatform),
-          'ChatGPT Sidebar Click'
-        )
-      );
-    }, 'ChatGPT Sidebar Injection');
-    
-    safeExecuteAsync(
-      () => loadBookmarksForConversation(conversationId),
-      'ChatGPT Load Bookmarks'
-    );
-  }, 'ChatGPT Initialization');
+    retry();
+  }
+  
+  setupMutationObserver(platform);
+  
+  injectSidebar(conversationId, (bookmark) =>
+    handleSidebarBookmarkClick(bookmark, currentPlatform)
+  );
 }
 
 /**
@@ -209,13 +201,16 @@ function handleUrlChange(): void {
     const currentUrl = window.location.href;
     
     if (currentUrl !== lastUrl) {
-      console.log('🔄 URL changed, re-initializing...');
+      //console.log('🔄 URL changed, re-initializing...');
       lastUrl = currentUrl;
       
       processedMessageIds.clear();
       
       setTimeout(() => {
-        initializeExtension();
+        safeExecuteAsync(
+          () => initializeExtension(),
+          'ChatGPT Re-initialization'
+        );
       }, 1000);
     }
   }, 'ChatGPT URL Change');
@@ -226,14 +221,17 @@ setInterval(() => safeExecute(handleUrlChange, 'ChatGPT URL Check'), 1000);
 
 window.addEventListener('popstate', () => {
   safeExecute(() => {
-    console.log('🔄 Browser navigation detected');
+    //console.log('🔄 Browser navigation detected');
     handleUrlChange();
   }, 'ChatGPT Popstate');
 });
 
-// Initialize
+// Initialize - USE ASYNC WRAPPER
 setTimeout(() => {
-  initializeExtension();
+  safeExecuteAsync(
+    () => initializeExtension(),
+    'ChatGPT Initialization Wrapper'
+  );
 }, 1000);
 
 // Cleanup

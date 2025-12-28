@@ -6,7 +6,8 @@ import {
   handleSidebarBookmarkClick,
   loadBookmarksForConversation,
   bookmarkedMessageIds,
-  bookmarkButtonExists
+  bookmarkButtonExists,
+  getBookmark
 } from './shared/base-content';
 import {
   safeExecute,
@@ -16,7 +17,7 @@ import {
   safeMutationCallback
 } from './shared/error-handler';
 
-console.log('🔖 AI Chat Bookmarks - Copilot loaded!');
+//console.log('🔖 AI Chat Bookmarks - Copilot loaded!');
 
 // Setup global error handler first
 setupGlobalErrorHandler('Copilot');
@@ -32,7 +33,6 @@ let lastUrl = window.location.href;
  */
 function updateButtonToCopilotBookmarkedState(button: Element, iconContainer: HTMLElement): void {
   safeDOMOperation(() => {
-    // Find the icon span
     const icon = button.querySelector('span');
     if (icon) {
       icon.textContent = '🔖';
@@ -70,7 +70,6 @@ function injectBookmarkButtons(platform: PlatformAdapter): number {
           return;
         }
         
-        // Check if button already exists
         if (bookmarkButtonExists(message.element)) {
           if (!processedMessageIds.has(message.id)) {
             processedMessageIds.add(message.id);
@@ -78,7 +77,7 @@ function injectBookmarkButtons(platform: PlatformAdapter): number {
           return;
         }
         
-        const isBookmarked = bookmarkedMessageIds.has(message.id);
+        const bookmark = getBookmark(message.id);
         
         platform.injectBookmarkButton(
           message,
@@ -86,7 +85,7 @@ function injectBookmarkButtons(platform: PlatformAdapter): number {
             () => handleBookmarkClick(msg, platform, updateButtonToCopilotBookmarkedState),
             'Copilot Bookmark Click'
           ),
-          isBookmarked
+          bookmark
         );
         
         processedMessageIds.add(message.id);
@@ -97,7 +96,7 @@ function injectBookmarkButtons(platform: PlatformAdapter): number {
     });
     
     if (injectedCount > 0) {
-      console.log(`📌 Injected ${injectedCount} new bookmark buttons`);
+      //console.log(`📌 Injected ${injectedCount} new bookmark buttons`);
     }
     
     return injectedCount;
@@ -105,7 +104,7 @@ function injectBookmarkButtons(platform: PlatformAdapter): number {
 }
 
 /**
- * Setup MutationObserver - Copilot version (500ms debounce)
+ * Setup MutationObserver - Copilot version
  */
 function setupMutationObserver(platform: PlatformAdapter): void {
   safeExecute(() => {
@@ -131,83 +130,73 @@ function setupMutationObserver(platform: PlatformAdapter): void {
 }
 
 /**
- * Initialize Copilot extension
+ * Initialize Copilot extension - ASYNC VERSION
  */
-    function initializeExtension(): void {
-  safeExecute(async () => {  // Make this async
-    const platform = new CopilotPlatform();
+async function initializeExtension(): Promise<void> {
+  const platform = new CopilotPlatform();
+  
+  if (!platform.detectPlatform()) {
+    console.log('❌ Not on Copilot');
+    return;
+  }
+  
+  currentPlatform = platform;
+  //console.log('✅ Copilot platform initialized');
+  
+  const conversationId = platform.getConversationId();
+  //console.log(`📝 Conversation ID: ${conversationId}`);
+  
+  // LOAD BOOKMARKS FIRST
+  await safeExecuteAsync(
+    () => loadBookmarksForConversation(conversationId),
+    'Copilot Load Bookmarks'
+  );
+  
+  const attemptInjection = () => {
+    const initialCount = injectBookmarkButtons(platform);
+    const totalMessages = platform.getMessages().length;
+    //console.log(`💬 Found ${totalMessages} messages, injected ${initialCount} buttons`);
+    return totalMessages;
+  };
+  
+  let totalMessages = attemptInjection();
+  
+  if (totalMessages === 0) {
+    //console.log('⏳ No messages found yet, setting up retry logic...');
     
-    if (!platform.detectPlatform()) {
-      console.log('❌ Not on Copilot');
-      return;
-    }
+    let retryCount = 0;
+    const maxRetries = 10;
+    const retryIntervals = [500, 1000, 1000, 2000, 2000, 3000, 3000, 5000, 5000, 5000];
     
-    currentPlatform = platform;
-    console.log('✅ Copilot platform initialized');
-    
-    const conversationId = platform.getConversationId();
-    console.log(`📝 Conversation ID: ${conversationId}`);
-    
-    // LOAD BOOKMARKS FIRST (before injection)
-    await safeExecuteAsync(
-      () => loadBookmarksForConversation(conversationId),
-      'Copilot Load Bookmarks'
-    );
-    
-    const attemptInjection = () => {
-      const initialCount = injectBookmarkButtons(platform);
-      const totalMessages = platform.getMessages().length;
-      console.log(`💬 Found ${totalMessages} messages, injected ${initialCount} buttons`);
-      return totalMessages;
+    const retry = () => {
+      if (retryCount >= maxRetries) {
+        //console.log('⚠️ Gave up after 10 retries');
+        return;
+      }
+      
+      const delay = retryIntervals[retryCount];
+      retryCount++;
+      
+      setTimeout(() => {
+        //console.log(`🔄 Retry ${retryCount}/${maxRetries}`);
+        totalMessages = attemptInjection();
+        
+        if (totalMessages > 0) {
+          //console.log(`✅ Success! Found ${totalMessages} messages`);
+        } else {
+          retry();
+        }
+      }, delay);
     };
     
-    let totalMessages = attemptInjection();
-    
-    if (totalMessages === 0) {
-      console.log('⏳ No messages found yet, setting up retry logic...');
-      
-      let retryCount = 0;
-      const maxRetries = 10;
-      const retryIntervals = [500, 1000, 1000, 2000, 2000, 3000, 3000, 5000, 5000, 5000];
-      
-      const retry = () => {
-        safeExecute(() => {
-          if (retryCount >= maxRetries) {
-            console.log('⚠️ Gave up after 10 retries');
-            return;
-          }
-          
-          const delay = retryIntervals[retryCount];
-          retryCount++;
-          
-          setTimeout(() => {
-            console.log(`🔄 Retry ${retryCount}/${maxRetries}`);
-            totalMessages = attemptInjection();
-            
-            if (totalMessages > 0) {
-              console.log(`✅ Success! Found ${totalMessages} messages`);
-            } else {
-              retry();
-            }
-          }, delay);
-        }, 'Copilot Retry Logic');
-      };
-      
-      retry();
-    }
-    
-    setupMutationObserver(platform);
-    
-    safeExecute(() => {
-      injectSidebar(conversationId, (bookmark) => 
-        safeExecute(
-          () => handleSidebarBookmarkClick(bookmark, currentPlatform),
-          'Copilot Sidebar Click'
-        )
-      );
-    }, 'Copilot Sidebar Injection');
-    
-  }, 'Copilot Initialization');
+    retry();
+  }
+  
+  setupMutationObserver(platform);
+  
+  injectSidebar(conversationId, (bookmark) =>
+    handleSidebarBookmarkClick(bookmark, currentPlatform)
+  );
 }
 
 /**
@@ -218,11 +207,11 @@ function handleUrlChange(): void {
     const currentUrl = window.location.href;
     
     if (currentUrl !== lastUrl) {
-      console.log('🔄 URL changed, re-initializing...');
+     // console.log('🔄 URL changed, re-initializing...');
       lastUrl = currentUrl;
       
       processedMessageIds.clear();
-      bookmarkedMessageIds.clear();
+      //bookmarkedMessageIds.clear();
       
       if (observer) {
         observer.disconnect();
@@ -230,7 +219,10 @@ function handleUrlChange(): void {
       }
       
       setTimeout(() => {
-        initializeExtension();
+        safeExecuteAsync(
+          () => initializeExtension(),
+          'Copilot Re-initialization'
+        );
       }, 1000);
     }
   }, 'Copilot URL Change');
@@ -241,14 +233,17 @@ setInterval(() => safeExecute(handleUrlChange, 'Copilot URL Check'), 1000);
 
 window.addEventListener('popstate', () => {
   safeExecute(() => {
-    console.log('🔄 Browser navigation detected');
+    //console.log('🔄 Browser navigation detected');
     handleUrlChange();
   }, 'Copilot Popstate');
 });
 
-// Initialize
+// Initialize - USE ASYNC WRAPPER
 setTimeout(() => {
-  initializeExtension();
+  safeExecuteAsync(
+    () => initializeExtension(),
+    'Copilot Initialization Wrapper'
+  );
 }, 1000);
 
 // Cleanup

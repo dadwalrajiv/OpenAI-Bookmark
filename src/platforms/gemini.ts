@@ -1,5 +1,6 @@
 import { BasePlatform } from './base';
 import { Message } from '../types/platform';
+import { Bookmark } from '../types/bookmark';  // ADD THIS with other imports
 
 export class GeminiPlatform extends BasePlatform {
   name = 'gemini';
@@ -10,12 +11,12 @@ export class GeminiPlatform extends BasePlatform {
   }
   
   getMessages(): Message[] {
-    console.log('🔍 Scanning for Gemini messages...');
+   // console.log('🔍 Scanning for Gemini messages...');
     
     // User messages - multiple selectors for resilience
     const userMessages = document.querySelectorAll('.user-query-container, [class*="user-query-container"]');
     
-    console.log(`Found ${userMessages.length} user messages`);
+    //console.log(`Found ${userMessages.length} user messages`);
     
     const messages: Message[] = [];
     
@@ -32,7 +33,7 @@ export class GeminiPlatform extends BasePlatform {
         if (!messageId) {
           messageId = this.generateStableMessageId('user', text);
           htmlElement.setAttribute('data-message-id', messageId);
-          console.log(`🆕 Generated new ID for user message: ${messageId}`);
+          //console.log(`🆕 Generated new ID for user message: ${messageId}`);
         }
         
         const message: Message = {
@@ -54,7 +55,7 @@ export class GeminiPlatform extends BasePlatform {
       return rectA.top - rectB.top;
     });
     
-    console.log(`✅ Successfully parsed ${messages.length} messages total`);
+   // console.log(`✅ Successfully parsed ${messages.length} messages total`);
     return messages;
   }
   
@@ -92,7 +93,7 @@ export class GeminiPlatform extends BasePlatform {
     return match ? match[2] : 'gemini_' + Date.now();
   }
   
-  injectBookmarkButton(message: Message, onClick: (message: Message) => void, isBookmarked: boolean): void {
+ injectBookmarkButton(message: Message, onClick: (message: Message) => void, bookmark: Bookmark | null): void {
   if (message.element.querySelector('.bookmark-button')) {
     return;
   }
@@ -100,7 +101,7 @@ export class GeminiPlatform extends BasePlatform {
   // Gemini structure: Find the query-content container that holds action buttons
   const queryContent = message.element.querySelector('.query-content, [class*="query-content"]');
   if (!queryContent) {
-    console.warn('❌ No query-content found');
+    //console.warn('❌ No query-content found');
     return;
   }
   
@@ -117,7 +118,7 @@ export class GeminiPlatform extends BasePlatform {
   }
   
   if (!actionButtonsContainer) {
-    console.warn('❌ Could not find action buttons container');
+   // console.warn('❌ Could not find action buttons container');
     return;
   }
   
@@ -131,10 +132,12 @@ export class GeminiPlatform extends BasePlatform {
   button.setAttribute('mat-icon-button', '');
   button.type = 'button';
   
+  const isBookmarked = bookmark !== null;  // CHANGED: derive from bookmark object
+  
   // Set attributes based on bookmarked state
   if (isBookmarked) {
     button.setAttribute('aria-label', 'Bookmarked');
-    button.setAttribute('title', 'Bookmarked');
+    button.setAttribute('title', bookmark.note || 'Bookmarked');  // CHANGED: show note in tooltip
     button.style.cssText = 'cursor: default;';
   } else {
     button.setAttribute('aria-label', 'Bookmark this message');
@@ -174,9 +177,8 @@ export class GeminiPlatform extends BasePlatform {
   // Insert as first child
   actionButtonsContainer.insertBefore(wrapper, actionButtonsContainer.firstChild);
 }
-  
   scrollToMessage(messageId: string): void {
-    console.log('📜 Scrolling to message:', messageId);
+   // console.log('📜 Scrolling to message:', messageId);
     
     const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
     

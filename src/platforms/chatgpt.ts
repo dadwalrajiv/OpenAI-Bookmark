@@ -1,5 +1,6 @@
 import { BasePlatform } from './base';
 import { Message } from '../types/platform';
+import { Bookmark } from '../types/bookmark';
 
 export class ChatGPTPlatform extends BasePlatform {
   name = 'chatgpt';
@@ -10,13 +11,13 @@ export class ChatGPTPlatform extends BasePlatform {
   }
   
   getMessages(): Message[] {
-    console.log('🔍 Scanning for ChatGPT messages...');
+    //console.log('🔍 Scanning for ChatGPT messages...');
     
     // Both user and assistant messages have data-message-author-role attribute
     const userMessages = document.querySelectorAll('[data-message-author-role="user"]');
     const assistantMessages = document.querySelectorAll('[data-message-author-role="assistant"]');
     
-    console.log(`Found ${userMessages.length} user messages, ${assistantMessages.length} assistant messages`);
+    //console.log(`Found ${userMessages.length} user messages, ${assistantMessages.length} assistant messages`);
     
     const messages: Message[] = [];
     
@@ -82,7 +83,7 @@ export class ChatGPTPlatform extends BasePlatform {
       return rectA.top - rectB.top;
     });
     
-    console.log(`✅ Successfully parsed ${messages.length} messages total`);
+    //console.log(`✅ Successfully parsed ${messages.length} messages total`);
     return messages;
   }
   
@@ -117,7 +118,7 @@ export class ChatGPTPlatform extends BasePlatform {
     return match ? match[1] : 'chatgpt_' + Date.now();
   }
   
-  injectBookmarkButton(message: Message, onClick: (message: Message) => void, isBookmarked: boolean): void {
+ injectBookmarkButton(message: Message, onClick: (message: Message) => void, bookmark: Bookmark | null): void {
   if (message.element.querySelector('.bookmark-button')) {
     return;
   }
@@ -126,7 +127,7 @@ export class ChatGPTPlatform extends BasePlatform {
   // Action bar is a sibling with buttons
   const turnContainer = message.element.closest('[tabindex="-1"]');
   if (!turnContainer) {
-    console.warn('❌ No turn container found');
+    //console.warn('❌ No turn container found');
     return;
   }
   
@@ -148,7 +149,7 @@ export class ChatGPTPlatform extends BasePlatform {
   }
   
   if (!actionBar) {
-    console.warn('❌ Could not find action bar');
+    //console.warn('❌ Could not find action bar');
     return;
   }
   
@@ -156,10 +157,12 @@ export class ChatGPTPlatform extends BasePlatform {
   button.className = 'bookmark-button text-token-text-secondary hover:bg-token-bg-secondary rounded-lg';
   button.type = 'button';
   
+  const isBookmarked = bookmark !== null;  // CHANGED: derive from bookmark object
+  
   // Set different attributes based on bookmarked state
   if (isBookmarked) {
     button.setAttribute('aria-label', 'Bookmarked');
-    button.setAttribute('title', 'Bookmarked');
+    button.setAttribute('title', bookmark.note || 'Bookmarked');  // CHANGED: show note in tooltip
     button.style.cssText = 'cursor: default;';
   } else {
     button.setAttribute('aria-label', 'Bookmark this message');
@@ -190,12 +193,12 @@ export class ChatGPTPlatform extends BasePlatform {
   if (firstButton && firstButton.parentElement) {
     firstButton.parentElement.insertBefore(button, firstButton);
   } else {
-    console.warn('❌ Could not find first button');
+    //console.warn('❌ Could not find first button');
   }
 }
   
  scrollToMessage(messageId: string): void {
-  console.log('📜 Scrolling to message:', messageId);
+  //console.log('📜 Scrolling to message:', messageId);
   
   const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
   

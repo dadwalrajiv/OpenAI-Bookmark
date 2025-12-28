@@ -14,18 +14,18 @@ export const Sidebar: React.FC<SidebarProps> = ({ conversationId, onBookmarkClic
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
-    console.log('🎨 Sidebar mounted for conversation:', conversationId);
+    //console.log('🎨 Sidebar mounted for conversation:', conversationId);
     loadBookmarks();
     
     const handleBookmarkAdded = (event: Event) => {
-      console.log('📢 Sidebar received bookmarkAdded event', event);
+      //console.log('📢 Sidebar received bookmarkAdded event', event);
       loadBookmarks();
     };
     
     window.addEventListener('bookmarkAdded', handleBookmarkAdded as EventListener);
     
     const handleBookmarkDeleted = () => {
-      console.log('📢 Sidebar received bookmarkDeleted event');
+      //console.log('📢 Sidebar received bookmarkDeleted event');
       loadBookmarks();
     };
     
@@ -38,19 +38,19 @@ export const Sidebar: React.FC<SidebarProps> = ({ conversationId, onBookmarkClic
   }, [conversationId]);
 
   const loadBookmarks = async () => {
-  console.log('🔄 Sidebar loading bookmarks for:', conversationId);
+  //console.log('🔄 Sidebar loading bookmarks for:', conversationId);
   const loaded = await BookmarkStorage.getByConversation(conversationId);
   loaded.sort((a, b) => b.timestamp - a.timestamp);
   
   // DEBUG: Log all bookmark details
-  console.log(`📚 Loaded ${loaded.length} bookmarks:`);
-  loaded.forEach((b, i) => {
-    console.log(`\n  Bookmark ${i + 1}:`);
-    console.log(`    ID: ${b.id}`);
-    console.log(`    MessageID: ${b.messageId}`);
-    console.log(`    Note: ${b.note}`);
-    console.log(`    Text: ${b.messageText.substring(0, 50)}...`);
-  });
+  //console.log(`📚 Loaded ${loaded.length} bookmarks:`);
+  // loaded.forEach((b, i) => {
+  //   console.log(`\n  Bookmark ${i + 1}:`);
+  //   console.log(`    ID: ${b.id}`);
+  //   console.log(`    MessageID: ${b.messageId}`);
+  //   console.log(`    Note: ${b.note}`);
+  //   console.log(`    Text: ${b.messageText.substring(0, 50)}...`);
+  // });
   
   setBookmarks(loaded);
 };
@@ -73,59 +73,60 @@ export const Sidebar: React.FC<SidebarProps> = ({ conversationId, onBookmarkClic
   return (
     <>
       {/* Floating Button (Collapsed State) */}
-      {!isExpanded && (
-        <div
-          onClick={() => setIsExpanded(true)}
-          style={{
-            position: 'fixed',
-            bottom: '20px',
-            right: '20px',
-            width: '60px',
-            height: '60px',
-            backgroundColor: '#2a2a2a',
-            borderRadius: '50%',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-            transition: 'all 0.3s ease',
-            zIndex: 9999,
-            border: '2px solid #444',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = '#3a3a3a';
-            e.currentTarget.style.transform = 'scale(1.1)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = '#2a2a2a';
-            e.currentTarget.style.transform = 'scale(1)';
-          }}
-        >
-          <div style={{ fontSize: '24px' }}>📌</div>
-          {bookmarks.length > 0 && (
-            <div style={{
-              position: 'absolute',
-              top: '-5px',
-              right: '-5px',
-              backgroundColor: '#4a9eff',
-              color: '#fff',
-              borderRadius: '12px',
-              padding: '2px 6px',
-              fontSize: '11px',
-              fontWeight: '600',
-              minWidth: '20px',
-              textAlign: 'center',
-              border: '2px solid #2a2a2a',
-            }}>
-              {bookmarks.length}
-            </div>
-          )}          
-        
-        
-        </div>
-      )}
+      {/* Floating Button (Collapsed State) */}
+{!isExpanded && (
+  <div
+    onClick={() => setIsExpanded(true)}
+    style={{
+      position: 'fixed',
+      bottom: '20px',
+      right: '20px',
+      width: '48px',
+      height: '48px',
+      backgroundColor: '#2a2a2a',
+      borderRadius: '50%',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      cursor: 'pointer',
+      boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+      transition: 'all 0.2s ease',
+      zIndex: 9999,
+      border: '2px solid #444',
+    }}
+    onMouseEnter={(e) => {
+      e.currentTarget.style.backgroundColor = '#3a3a3a';
+      e.currentTarget.style.transform = 'scale(1.05)';
+    }}
+    onMouseLeave={(e) => {
+      e.currentTarget.style.backgroundColor = '#2a2a2a';
+      e.currentTarget.style.transform = 'scale(1)';
+    }}
+  >
+    <div style={{ fontSize: '22px', lineHeight: '1' }}>📌</div>
+    {bookmarks.length > 0 && (
+      <div style={{
+        position: 'absolute',
+        top: '-4px',
+        right: '-4px',
+        backgroundColor: '#4a9eff',
+        color: '#fff',
+        borderRadius: '50%',
+        width: '20px',
+        height: '20px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: '10px',
+        fontWeight: '700',
+        border: '2px solid #2a2a2a',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+      }}>
+        {bookmarks.length}
+      </div>
+    )}
+  </div>
+)}
 
       {/* Expanded Sidebar */}
       {isExpanded && (

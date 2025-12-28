@@ -6,7 +6,8 @@ import {
   handleSidebarBookmarkClick,
   loadBookmarksForConversation,
   bookmarkedMessageIds,
-  bookmarkButtonExists  
+  bookmarkButtonExists,
+  getBookmark
 } from './shared/base-content';
 import {
   safeExecute,
@@ -16,7 +17,7 @@ import {
   safeMutationCallback
 } from './shared/error-handler';
 
-console.log('🔖 AI Chat Bookmarks - Gemini loaded!');
+//console.log('🔖 AI Chat Bookmarks - Gemini loaded!');
 
 // Setup global error handler first
 setupGlobalErrorHandler('Gemini');
@@ -72,7 +73,6 @@ function injectBookmarkButtons(platform: PlatformAdapter): number {
           return;
         }
         
-        // IMPROVED: Use comprehensive button existence check
         if (bookmarkButtonExists(message.element)) {
           if (!processedMessageIds.has(message.id)) {
             processedMessageIds.add(message.id);
@@ -80,7 +80,7 @@ function injectBookmarkButtons(platform: PlatformAdapter): number {
           return;
         }
         
-        const isBookmarked = bookmarkedMessageIds.has(message.id);
+        const bookmark = getBookmark(message.id);
         
         platform.injectBookmarkButton(
           message,
@@ -88,19 +88,18 @@ function injectBookmarkButtons(platform: PlatformAdapter): number {
             () => handleBookmarkClick(msg, platform, updateButtonToGeminiBookmarkedState),
             'Gemini Bookmark Click'
           ),
-          isBookmarked
+          bookmark
         );
         
         processedMessageIds.add(message.id);
         injectedCount++;
       } catch (error) {
         console.warn('⚠️  Failed to inject button for message:', message.id, error);
-        // Continue with other messages
       }
     });
     
     if (injectedCount > 0) {
-      console.log(`📌 Injected ${injectedCount} new bookmark buttons`);
+      //console.log(`📌 Injected ${injectedCount} new bookmark buttons`);
     }
     
     return injectedCount;
@@ -129,86 +128,78 @@ function setupMutationObserver(platform: PlatformAdapter): void {
       subtree: true
     });
     
-    console.log('👁️  MutationObserver active - watching for new messages');
+    //console.log('👁️  MutationObserver active - watching for new messages');
   }, 'Gemini MutationObserver Setup');
 }
 
 /**
- * Initialize Gemini extension
+ * Initialize Gemini extension - ASYNC VERSION
  */
-function initializeExtension(): void {
-  safeExecute(() => {
-    const platform = new GeminiPlatform();
+async function initializeExtension(): Promise<void> {
+  const platform = new GeminiPlatform();
+  
+  if (!platform.detectPlatform()) {
+    console.log('❌ Not on Gemini');
+    return;
+  }
+  
+  currentPlatform = platform;
+  //console.log('✅ Gemini platform initialized');
+  
+  const conversationId = platform.getConversationId();
+  //console.log(`📝 Conversation ID: ${conversationId}`);
+  
+  // LOAD BOOKMARKS FIRST
+  await safeExecuteAsync(
+    () => loadBookmarksForConversation(conversationId),
+    'Gemini Load Bookmarks'
+  );
+  
+  const attemptInjection = () => {
+    const initialCount = injectBookmarkButtons(platform);
+    const totalMessages = platform.getMessages().length;
+    //console.log(`💬 Found ${totalMessages} messages, injected ${initialCount} buttons`);
+    return totalMessages;
+  };
+  
+  let totalMessages = attemptInjection();
+  
+  if (totalMessages === 0) {
+    console.log('⏳ No messages found yet, setting up retry logic...');
     
-    if (!platform.detectPlatform()) {
-      console.log('❌ Not on Gemini');
-      return;
-    }
+    let retryCount = 0;
+    const maxRetries = 10;
+    const retryIntervals = [500, 1000, 1000, 2000, 2000, 3000, 3000, 5000, 5000, 5000];
     
-    currentPlatform = platform;
-    console.log('✅ Gemini platform initialized');
-    
-    const conversationId = platform.getConversationId();
-    console.log(`📝 Conversation ID: ${conversationId}`);
-    
-    const attemptInjection = () => {
-      const initialCount = injectBookmarkButtons(platform);
-      const totalMessages = platform.getMessages().length;
-      console.log(`💬 Found ${totalMessages} messages, injected ${initialCount} buttons`);
-      return totalMessages;
+    const retry = () => {
+      if (retryCount >= maxRetries) {
+       // console.log('⚠️ Gave up after 10 retries');
+        return;
+      }
+      
+      const delay = retryIntervals[retryCount];
+      retryCount++;
+      
+      setTimeout(() => {
+        //console.log(`🔄 Retry ${retryCount}/${maxRetries}`);
+        totalMessages = attemptInjection();
+        
+        if (totalMessages > 0) {
+          //console.log(`✅ Success! Found ${totalMessages} messages`);
+        } else {
+          retry();
+        }
+      }, delay);
     };
     
-    let totalMessages = attemptInjection();
-    
-    if (totalMessages === 0) {
-      console.log('⏳ No messages found yet, setting up retry logic...');
-      
-      let retryCount = 0;
-      const maxRetries = 10;
-      const retryIntervals = [500, 1000, 1000, 2000, 2000, 3000, 3000, 5000, 5000, 5000];
-      
-      const retry = () => {
-        safeExecute(() => {
-          if (retryCount >= maxRetries) {
-            console.log('⚠️ Gave up after 10 retries');
-            return;
-          }
-          
-          const delay = retryIntervals[retryCount];
-          retryCount++;
-          
-          setTimeout(() => {
-            console.log(`🔄 Retry ${retryCount}/${maxRetries}`);
-            totalMessages = attemptInjection();
-            
-            if (totalMessages > 0) {
-              console.log(`✅ Success! Found ${totalMessages} messages`);
-            } else {
-              retry();
-            }
-          }, delay);
-        }, 'Gemini Retry Logic');
-      };
-      
-      retry();
-    }
-    
-    setupMutationObserver(platform);
-    
-    safeExecute(() => {
-      injectSidebar(conversationId, (bookmark) => 
-        safeExecute(
-          () => handleSidebarBookmarkClick(bookmark, currentPlatform),
-          'Gemini Sidebar Click'
-        )
-      );
-    }, 'Gemini Sidebar Injection');
-    
-    safeExecuteAsync(
-      () => loadBookmarksForConversation(conversationId),
-      'Gemini Load Bookmarks'
-    );
-  }, 'Gemini Initialization');
+    retry();
+  }
+  
+  setupMutationObserver(platform);
+  
+  injectSidebar(conversationId, (bookmark) =>
+    handleSidebarBookmarkClick(bookmark, currentPlatform)
+  );
 }
 
 /**
@@ -223,7 +214,7 @@ function handleUrlChange(): void {
       lastUrl = currentUrl;
       
       processedMessageIds.clear();
-      bookmarkedMessageIds.clear();
+      // DON'T clear bookmarkedMessageIds - loadBookmarksForConversation handles this
       
       if (observer) {
         observer.disconnect();
@@ -231,7 +222,10 @@ function handleUrlChange(): void {
       }
       
       setTimeout(() => {
-        initializeExtension();
+        safeExecuteAsync(
+          () => initializeExtension(),
+          'Gemini Re-initialization'
+        );
       }, 1000);
     }
   }, 'Gemini URL Change');
@@ -242,14 +236,17 @@ setInterval(() => safeExecute(handleUrlChange, 'Gemini URL Check'), 1000);
 
 window.addEventListener('popstate', () => {
   safeExecute(() => {
-    console.log('🔄 Browser navigation detected');
+    //console.log('🔄 Browser navigation detected');
     handleUrlChange();
   }, 'Gemini Popstate');
 });
 
-// Initialize
+// Initialize - USE ASYNC WRAPPER
 setTimeout(() => {
-  initializeExtension();
+  safeExecuteAsync(
+    () => initializeExtension(),
+    'Gemini Initialization Wrapper'
+  );
 }, 1000);
 
 // Cleanup

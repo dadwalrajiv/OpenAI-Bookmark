@@ -64,7 +64,7 @@ export function setupGlobalErrorHandler(platformName: string): void {
     }
   });
   
-  console.log(`🛡️  [${platformName}] Error handlers active - extension isolated from page`);
+  //console.log(`🛡️  [${platformName}] Error handlers active - extension isolated from page`);
 }
 
 /**

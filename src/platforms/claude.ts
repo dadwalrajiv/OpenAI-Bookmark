@@ -1,5 +1,6 @@
 import { BasePlatform } from './base';
 import { Message } from '../types/platform';
+import { Bookmark } from '../types/bookmark';  // ADD THIS with other imports
 
 export class ClaudePlatform extends BasePlatform {
   name = 'claude';
@@ -9,12 +10,12 @@ export class ClaudePlatform extends BasePlatform {
   }
   
   getMessages(): Message[] {
-    console.log('🔍 Scanning for Claude messages...');
+    //console.log('🔍 Scanning for Claude messages...');
     
     const userMessages = document.querySelectorAll('[data-testid="user-message"]');
     const assistantMessages = document.querySelectorAll('[data-test-render-count]');
     
-    console.log(`Found ${userMessages.length} user messages, ${assistantMessages.length} assistant messages`);
+    //console.log(`Found ${userMessages.length} user messages, ${assistantMessages.length} assistant messages`);
     
     const messages: Message[] = [];
     
@@ -82,7 +83,7 @@ export class ClaudePlatform extends BasePlatform {
       return rectA.top - rectB.top;
     });
     
-    console.log(`✅ Successfully parsed ${messages.length} messages total`);
+    //console.log(`✅ Successfully parsed ${messages.length} messages total`);
     return messages;
   }
   
@@ -120,7 +121,7 @@ export class ClaudePlatform extends BasePlatform {
     return match ? match[1] : 'unknown';
   }
   
-  injectBookmarkButton(message: Message, onClick: (message: Message) => void, isBookmarked: boolean): void {
+ injectBookmarkButton(message: Message, onClick: (message: Message) => void, bookmark: Bookmark | null): void {
   // Check if button already exists
   if (message.element.querySelector('.bookmark-button')) {
     return;
@@ -164,20 +165,23 @@ export class ClaudePlatform extends BasePlatform {
   // Find the button container
   const buttonContainer = actionBar.querySelector('.flex.items-center');
   
+  const isBookmarked = bookmark !== null;  // CHANGED: derive from bookmark object
+  
   if (!buttonContainer) {
     // Use the action bar itself as fallback
-    this.createAndInsertButton(actionBar, onClick, message, isBookmarked);
+    this.createAndInsertButton(actionBar, onClick, message, isBookmarked, bookmark?.note);  // CHANGED: pass note
     return;
   }
   
-  this.createAndInsertButton(buttonContainer, onClick, message, isBookmarked);
+  this.createAndInsertButton(buttonContainer, onClick, message, isBookmarked, bookmark?.note);  // CHANGED: pass note
 }
 
 private createAndInsertButton(
   container: Element, 
   onClick: (message: Message) => void, 
   message: Message,
-  isBookmarked: boolean
+  isBookmarked: boolean,
+  bookmarkNote?: string  // ADD THIS PARAMETER
 ): void {
   const button = document.createElement('button');
   button.className = 'bookmark-button inline-flex items-center justify-center relative shrink-0 select-none border-transparent transition font-base duration-300 h-8 w-8 rounded-md active:scale-95 group';
@@ -186,7 +190,7 @@ private createAndInsertButton(
   // Set different attributes based on bookmarked state
   if (isBookmarked) {
     button.setAttribute('aria-label', 'Bookmarked');
-    button.setAttribute('title', 'Bookmarked');
+    button.setAttribute('title', bookmarkNote || 'Bookmarked');  // CHANGED: show note in tooltip
     button.style.cssText = 'cursor: default; opacity: 0.8;';
   } else {
     button.setAttribute('aria-label', 'Bookmark this message');
@@ -220,7 +224,7 @@ private createAndInsertButton(
 }
   
  scrollToMessage(messageId: string): void {
-  console.log('📜 Scrolling to message:', messageId);
+  //console.log('📜 Scrolling to message:', messageId);
   
   const messageElement = document.querySelector(`[data-message-id="${messageId}"]`) as HTMLElement;
   

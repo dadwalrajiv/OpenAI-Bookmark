@@ -1,5 +1,6 @@
 import { BasePlatform } from './base';
 import { Message } from '../types/platform';
+import { Bookmark } from '../types/bookmark';  // ADD THIS with other imports
 
 export class CopilotPlatform extends BasePlatform {
   name = 'copilot';
@@ -11,12 +12,12 @@ export class CopilotPlatform extends BasePlatform {
   
  
   getMessages(): Message[] {
-  console.log('🔍 Scanning for Copilot messages...');
+  //console.log('🔍 Scanning for Copilot messages...');
   
   // User messages only
   const userMessages = document.querySelectorAll('[data-content="user-message"]');
   
-  console.log(`Found ${userMessages.length} user messages`);
+  //console.log(`Found ${userMessages.length} user messages`);
   
   const messages: Message[] = [];
   
@@ -26,7 +27,7 @@ export class CopilotPlatform extends BasePlatform {
     // Find the parent container (the one with id ending in "-user-message")
     const container = htmlElement.closest('[id$="-user-message"]') as HTMLElement;
     if (!container) {
-      console.warn('Could not find message container');
+      //console.warn('Could not find message container');
       return;
     }
     
@@ -38,7 +39,7 @@ export class CopilotPlatform extends BasePlatform {
       if (!messageId) {
         messageId = this.generateStableMessageId('user', text);
         container.setAttribute('data-message-id', messageId);
-        console.log(`🆕 Generated new ID for user message: ${messageId}`);
+       // console.log(`🆕 Generated new ID for user message: ${messageId}`);
       }
       
       const message: Message = {
@@ -59,7 +60,7 @@ export class CopilotPlatform extends BasePlatform {
     return rectA.top - rectB.top;
   });
   
-  console.log(`✅ Successfully parsed ${messages.length} messages total`);
+ // console.log(`✅ Successfully parsed ${messages.length} messages total`);
   return messages;
 }
   
@@ -87,7 +88,7 @@ export class CopilotPlatform extends BasePlatform {
     return match ? match[1] : 'copilot_' + Date.now();
   }
   
-    injectBookmarkButton(message: Message, onClick: (message: Message) => void, isBookmarked: boolean): void {
+   injectBookmarkButton(message: Message, onClick: (message: Message) => void, bookmark: Bookmark | null): void {
   if (message.element.querySelector('.bookmark-button')) {
     return;
   }
@@ -103,9 +104,11 @@ export class CopilotPlatform extends BasePlatform {
   button.setAttribute('type', 'button');
   button.setAttribute('data-testid', 'bookmark-button');
   
+  const isBookmarked = bookmark !== null;  // CHANGED: derive from bookmark object
+  
   if (isBookmarked) {
     button.setAttribute('aria-label', 'Bookmarked');
-    button.setAttribute('title', 'Bookmarked');
+    button.setAttribute('title', bookmark.note || 'Bookmarked');  // CHANGED: show note in tooltip
     button.style.cssText = 'cursor: default;';
   } else {
     button.setAttribute('aria-label', 'Bookmark this message');
@@ -132,7 +135,7 @@ export class CopilotPlatform extends BasePlatform {
 }
   
   scrollToMessage(messageId: string): void {
-    console.log('📜 Scrolling to message:', messageId);
+    //console.log('📜 Scrolling to message:', messageId);
     
     const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
     

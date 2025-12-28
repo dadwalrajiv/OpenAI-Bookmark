@@ -68,7 +68,7 @@ export class BookmarkStorage {
           console.warn(`⚠️  Filtered out ${bookmarks.length - validBookmarks.length} invalid bookmarks`);
         }
         
-        console.log(`📚 Loaded ${validBookmarks.length} valid bookmarks from storage`);
+        //console.log(`📚 Loaded ${validBookmarks.length} valid bookmarks from storage`);
         resolve(validBookmarks);
       });
     });

@@ -43,6 +43,7 @@ export function bookmarkButtonExists(messageElement: HTMLElement): boolean {
  * Shared state - used by all platforms
  */
 export let bookmarkedMessageIds = new Set<string>();
+export const bookmarksMap = new Map<string, Bookmark>();  // ADD THIS LINE
 
 /**
  * Handle bookmark click - SHARED across all platforms
@@ -116,7 +117,7 @@ export async function handleBookmarkClick(
       }
     }
     
-    console.log('✅ Bookmark saved successfully!');
+    //console.log('✅ Bookmark saved successfully!');
     window.dispatchEvent(new CustomEvent('bookmarkAdded', { detail: bookmark }));
     
   } catch (error) {
@@ -132,7 +133,7 @@ export function handleSidebarBookmarkClick(
   bookmark: Bookmark,
   currentPlatform: PlatformAdapter | null
 ): void {
-  console.log('🎯 Sidebar bookmark clicked:', bookmark.id);
+  //console.log('🎯 Sidebar bookmark clicked:', bookmark.id);
   
   if (!currentPlatform) {
     console.warn('⚠️  Platform not initialized');
@@ -140,7 +141,7 @@ export function handleSidebarBookmarkClick(
   }
   
   const allMessageElements = document.querySelectorAll('[data-message-id]');
-  console.log(`🔍 Total messages with IDs in DOM: ${allMessageElements.length}`);
+  //console.log(`🔍 Total messages with IDs in DOM: ${allMessageElements.length}`);
   
   currentPlatform.scrollToMessage(bookmark.messageId);
 }
@@ -151,16 +152,43 @@ export function handleSidebarBookmarkClick(
 export async function loadBookmarksForConversation(conversationId: string): Promise<void> {
   try {
     const bookmarks = await BookmarkStorage.getByConversation(conversationId);
-    console.log(`📖 Found ${bookmarks.length} existing bookmarks for this conversation`);
+    //console.log(`📖 Found ${bookmarks.length} existing bookmarks for this conversation`);
     
+    // Clear and rebuild lookup structures
     bookmarkedMessageIds.clear();
+    bookmarksMap.clear();  // ADD THIS
+    
     bookmarks.forEach(bookmark => {
       bookmarkedMessageIds.add(bookmark.messageId);
+      bookmarksMap.set(bookmark.messageId, bookmark);  // ADD THIS
     });
     
-    console.log(`🔖 Tracking ${bookmarkedMessageIds.size} bookmarked messages`);
+    //console.log(`🔖 Tracking ${bookmarkedMessageIds.size} bookmarked messages`);
     
   } catch (error) {
     console.error('❌ Error loading bookmarks:', error);
   }
 }
+
+/**
+ * Get bookmark for a message (synchronous O(1) lookup)
+ */
+export function getBookmark(messageId: string): Bookmark | null {
+  return bookmarksMap.get(messageId) || null;
+}
+/**
+ * Find bookmark for a message ID
+ */
+export async function findBookmarkForMessage(
+  messageId: string, 
+  conversationId: string
+): Promise<Bookmark | null> {
+  try {
+    const bookmarks = await BookmarkStorage.getByConversation(conversationId);
+    return bookmarks.find(b => b.messageId === messageId) || null;
+  } catch (error) {
+    console.error('Error finding bookmark:', error);
+    return null;
+  }
+}
+

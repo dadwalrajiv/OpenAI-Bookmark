@@ -73,3 +73,47 @@
 .bookmark-button[aria-label="Bookmarked"] {
   pointer-events: none;
 }
+
+/* ===================================
+   BOOKMARK TOOLTIP (All Platforms)
+   =================================== */
+
+/* Custom tooltip for bookmarked buttons - force with !important */
+button.bookmark-button[aria-label="Bookmarked"] {
+  position: relative !important;
+}
+
+button.bookmark-button[aria-label="Bookmarked"]:hover::after {
+  content: attr(title) !important;
+  display: block !important;
+  position: absolute !important;
+  bottom: calc(100% + 8px) !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  padding: 8px 12px !important;
+  background-color: #1a1a1a !important;
+  color: #ffffff !important;
+  font-size: 13px !important;
+  font-family: system-ui, -apple-system, sans-serif !important;
+  white-space: nowrap !important;
+  border-radius: 6px !important;
+  pointer-events: none !important;
+  z-index: 999999 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4) !important;
+  max-width: 300px !important;
+  line-height: 1.4 !important;
+}
+
+/* Tooltip arrow */
+button.bookmark-button[aria-label="Bookmarked"]:hover::before {
+  content: '' !important;
+  display: block !important;
+  position: absolute !important;
+  bottom: calc(100% + 3px) !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  border: 5px solid transparent !important;
+  border-top-color: #1a1a1a !important;
+  pointer-events: none !important;
+  z-index: 999999 !important;
+}

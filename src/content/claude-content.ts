@@ -6,17 +6,18 @@ import {
   handleSidebarBookmarkClick,
   loadBookmarksForConversation,
   bookmarkedMessageIds,
-   bookmarkButtonExists  // ADD THIS
+  bookmarkButtonExists,
+  getBookmark
 } from './shared/base-content';
 import {
   safeExecute,
   safeExecuteAsync,
   setupGlobalErrorHandler,
   safeDOMOperation,
-  safeMutationCallback
+  safeMutationCallback  
 } from './shared/error-handler';
 
-console.log('🔖 AI Chat Bookmarks - Claude loaded!');
+//console.log('🔖 AI Chat Bookmarks - Claude loaded!');
 
 // Setup global error handler first
 setupGlobalErrorHandler('Claude');
@@ -63,7 +64,6 @@ function injectBookmarkButtons(platform: PlatformAdapter): number {
           return;
         }
         
-        // IMPROVED: Use comprehensive button existence check
         if (bookmarkButtonExists(message.element)) {
           if (!processedMessageIds.has(message.id)) {
             processedMessageIds.add(message.id);
@@ -71,7 +71,7 @@ function injectBookmarkButtons(platform: PlatformAdapter): number {
           return;
         }
         
-        const isBookmarked = bookmarkedMessageIds.has(message.id);
+         const bookmark = getBookmark(message.id); 
         
         platform.injectBookmarkButton(
           message,
@@ -79,24 +79,24 @@ function injectBookmarkButtons(platform: PlatformAdapter): number {
             () => handleBookmarkClick(msg, platform, updateButtonToClaudeBookmarkedState),
             'Claude Bookmark Click'
           ),
-          isBookmarked
+          bookmark
         );
         
         processedMessageIds.add(message.id);
         injectedCount++;
       } catch (error) {
         console.warn('⚠️  Failed to inject button for message:', message.id, error);
-        // Continue with other messages
       }
     });
     
     if (injectedCount > 0) {
-      console.log(`📌 Injected ${injectedCount} new bookmark buttons`);
+      //console.log(`📌 Injected ${injectedCount} new bookmark buttons`);
     }
     
     return injectedCount;
   }, 'Claude Button Injection', 0) || 0;
 }
+
 /**
  * Setup MutationObserver - Claude version
  */
@@ -119,86 +119,78 @@ function setupMutationObserver(platform: PlatformAdapter): void {
       subtree: true
     });
     
-    console.log('👁️  MutationObserver active - watching for new messages');
+   // console.log('👁️  MutationObserver active - watching for new messages');
   }, 'Claude MutationObserver Setup');
 }
 
 /**
- * Initialize Claude extension
+ * Initialize Claude extension - ASYNC VERSION
  */
-function initializeExtension(): void {
-  safeExecute(() => {
-    const platform = new ClaudePlatform();
+async function initializeExtension(): Promise<void> {
+  const platform = new ClaudePlatform();
+  
+  if (!platform.detectPlatform()) {
+    console.log('❌ Not on Claude');
+    return;
+  }
+  
+  currentPlatform = platform;
+ // console.log('✅ Claude platform initialized');
+  
+  const conversationId = platform.getConversationId();
+  //console.log(`📝 Conversation ID: ${conversationId}`);
+  
+  // LOAD BOOKMARKS FIRST
+  await safeExecuteAsync(
+    () => loadBookmarksForConversation(conversationId),
+    'Claude Load Bookmarks'
+  );
+  
+  const attemptInjection = () => {
+    const initialCount = injectBookmarkButtons(platform);
+    const totalMessages = platform.getMessages().length;
+   // console.log(`💬 Found ${totalMessages} messages, injected ${initialCount} buttons`);
+    return totalMessages;
+  };
+  
+  let totalMessages = attemptInjection();
+  
+  if (totalMessages === 0) {
+    console.log('⏳ No messages found yet, setting up retry logic...');
     
-    if (!platform.detectPlatform()) {
-      console.log('❌ Not on Claude');
-      return;
-    }
+    let retryCount = 0;
+    const maxRetries = 10;
+    const retryIntervals = [500, 1000, 1000, 2000, 2000, 3000, 3000, 5000, 5000, 5000];
     
-    currentPlatform = platform;
-    console.log('✅ Claude platform initialized');
-    
-    const conversationId = platform.getConversationId();
-    console.log(`📝 Conversation ID: ${conversationId}`);
-    
-    const attemptInjection = () => {
-      const initialCount = injectBookmarkButtons(platform);
-      const totalMessages = platform.getMessages().length;
-      console.log(`💬 Found ${totalMessages} messages, injected ${initialCount} buttons`);
-      return totalMessages;
+    const retry = () => {
+      if (retryCount >= maxRetries) {
+        console.log('⚠️ Gave up after 10 retries');
+        return;
+      }
+      
+      const delay = retryIntervals[retryCount];
+      retryCount++;
+      
+      setTimeout(() => {
+        //console.log(`🔄 Retry ${retryCount}/${maxRetries}`);
+        totalMessages = attemptInjection();
+        
+        if (totalMessages > 0) {
+         // console.log(`✅ Success! Found ${totalMessages} messages`);
+        } else {
+          retry();
+        }
+      }, delay);
     };
     
-    let totalMessages = attemptInjection();
-    
-    if (totalMessages === 0) {
-      console.log('⏳ No messages found yet, setting up retry logic...');
-      
-      let retryCount = 0;
-      const maxRetries = 10;
-      const retryIntervals = [500, 1000, 1000, 2000, 2000, 3000, 3000, 5000, 5000, 5000];
-      
-      const retry = () => {
-        safeExecute(() => {
-          if (retryCount >= maxRetries) {
-            console.log('⚠️ Gave up after 10 retries');
-            return;
-          }
-          
-          const delay = retryIntervals[retryCount];
-          retryCount++;
-          
-          setTimeout(() => {
-            console.log(`🔄 Retry ${retryCount}/${maxRetries}`);
-            totalMessages = attemptInjection();
-            
-            if (totalMessages > 0) {
-              console.log(`✅ Success! Found ${totalMessages} messages`);
-            } else {
-              retry();
-            }
-          }, delay);
-        }, 'Claude Retry Logic');
-      };
-      
-      retry();
-    }
-    
-    setupMutationObserver(platform);
-    
-    safeExecute(() => {
-      injectSidebar(conversationId, (bookmark) => 
-        safeExecute(
-          () => handleSidebarBookmarkClick(bookmark, currentPlatform),
-          'Claude Sidebar Click'
-        )
-      );
-    }, 'Claude Sidebar Injection');
-    
-    safeExecuteAsync(
-      () => loadBookmarksForConversation(conversationId),
-      'Claude Load Bookmarks'
-    );
-  }, 'Claude Initialization');
+    retry();
+  }
+  
+  setupMutationObserver(platform);
+  
+  injectSidebar(conversationId, (bookmark) =>
+    handleSidebarBookmarkClick(bookmark, currentPlatform)
+  );
 }
 
 /**
@@ -215,7 +207,10 @@ function handleUrlChange(): void {
       processedMessageIds.clear();
       
       setTimeout(() => {
-        initializeExtension();
+        safeExecuteAsync(
+          () => initializeExtension(),
+          'Claude Re-initialization'
+        );
       }, 1000);
     }
   }, 'Claude URL Change');
@@ -226,14 +221,17 @@ setInterval(() => safeExecute(handleUrlChange, 'Claude URL Check'), 1000);
 
 window.addEventListener('popstate', () => {
   safeExecute(() => {
-    console.log('🔄 Browser navigation detected');
+   // console.log('🔄 Browser navigation detected');
     handleUrlChange();
   }, 'Claude Popstate');
 });
 
-// Initialize
+// Initialize - USE ASYNC WRAPPER
 setTimeout(() => {
-  initializeExtension();
+  safeExecuteAsync(
+    () => initializeExtension(),
+    'Claude Initialization Wrapper'
+  );
 }, 1000);
 
 // Cleanup

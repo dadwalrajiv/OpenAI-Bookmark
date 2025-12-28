@@ -1,3 +1,4 @@
+import { Bookmark } from './bookmark';  // Add this import at the top
 export interface Message {
   id: string;
   element: HTMLElement;
@@ -10,7 +11,11 @@ export interface PlatformAdapter {
   name: string;
   detectPlatform(): boolean;
   getMessages(): Message[];
-  injectBookmarkButton(message: Message, onClick: (message: Message) => void, isBookmarked: boolean): void;  // ADD isBookmarked param
-  scrollToMessage(messageId: string): void;
   getConversationId(): string;
+  injectBookmarkButton(
+    message: Message, 
+    onClick: (message: Message) => void, 
+    bookmark: Bookmark | null  // CHANGED: was isBookmarked: boolean
+  ): void;
+  scrollToMessage(messageId: string): void;
 }

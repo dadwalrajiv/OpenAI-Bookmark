@@ -38,5 +38,5 @@ export function injectSidebar(conversationId: string, onBookmarkClick: (bookmark
     </React.StrictMode>
   );
 
-  console.log('✅ Sidebar injected for conversation:', conversationId);
+ // console.log('✅ Sidebar injected for conversation:', conversationId);
 }
