@@ -87,6 +87,9 @@ function injectBookmarkButtons(platform: PlatformAdapter): number {
           ),
           bookmark
         );
+         
+        // ✅ MARK MESSAGE AS PROCESSED - prevents duplicate injection
+        message.element.setAttribute('data-bookmark-processed', 'true');
         
         processedMessageIds.add(message.id);
         injectedCount++;

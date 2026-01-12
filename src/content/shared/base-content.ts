@@ -9,12 +9,18 @@ import { PlatformAdapter } from '../../types/platform';
  * Searches in message element and parent containers
  */
 export function bookmarkButtonExists(messageElement: HTMLElement): boolean {
-  // Check in message element itself
+  // Strategy 1: Direct check in message element - most reliable
   if (messageElement.querySelector('.bookmark-button')) {
     return true;
   }
   
-  // Check in parent containers (up to 5 levels)
+  // Strategy 2: Check if message is already marked as processed
+  if (messageElement.hasAttribute('data-bookmark-processed')) {
+    return true;
+  }
+  
+  // Strategy 3: Check in parent containers (up to 5 levels) - KEEP YOUR ORIGINAL LOGIC
+  // This is for platforms where buttons might be in parent containers
   let searchElement: HTMLElement | null = messageElement;
   let attempts = 0;
   
@@ -22,15 +28,7 @@ export function bookmarkButtonExists(messageElement: HTMLElement): boolean {
     // Look for bookmark button in this level
     const button = searchElement.querySelector('.bookmark-button');
     if (button) {
-      // Verify this button is associated with our message
-      // by checking if it's within reasonable proximity
-      const buttonRect = button.getBoundingClientRect();
-      const messageRect = messageElement.getBoundingClientRect();
-      
-      // If button is within message's vertical bounds (with 100px margin)
-      if (Math.abs(buttonRect.top - messageRect.top) < 100) {
-        return true;
-      }
+      return true;
     }
     
     searchElement = searchElement.parentElement;

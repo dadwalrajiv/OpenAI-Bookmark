@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "AI Chat Bookmarks - ChatGPT, Claude, Gemini, Copilot",
-  "version": "0.2.0", 
+  "version": "0.2.1", 
   "description": "Bookmark important messages in ChatGPT, Claude, Gemini, and Copilot. Save AI insights with notes and search.",
   "author": "Rajiv Thakur",
   "icons": {

@@ -71,7 +71,7 @@ function injectBookmarkButtons(platform: PlatformAdapter): number {
           return;
         }
         
-         const bookmark = getBookmark(message.id); 
+        const bookmark = getBookmark(message.id); 
         
         platform.injectBookmarkButton(
           message,
@@ -81,6 +81,9 @@ function injectBookmarkButtons(platform: PlatformAdapter): number {
           ),
           bookmark
         );
+        
+        // ✅ MARK MESSAGE AS PROCESSED - prevents duplicate injection
+        message.element.setAttribute('data-bookmark-processed', 'true');
         
         processedMessageIds.add(message.id);
         injectedCount++;
