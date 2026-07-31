@@ -3,9 +3,7 @@ import { PlatformAdapter, Message } from '../types/platform';
 import { injectSidebar } from '../sidebar/index';
 import {
   handleBookmarkClick,
-  handleSidebarBookmarkClick,
   loadBookmarksForConversation,
-  bookmarkedMessageIds,
   bookmarkButtonExists,
   getBookmark
 } from './shared/base-content';
@@ -14,237 +12,165 @@ import {
   safeExecuteAsync,
   setupGlobalErrorHandler,
   safeDOMOperation,
-  safeMutationCallback  
+  safeMutationCallback
 } from './shared/error-handler';
 
-//console.log('🔖 AI Chat Bookmarks - Claude loaded!');
-
-// Setup global error handler first
 setupGlobalErrorHandler('Claude');
 
-let currentPlatform: PlatformAdapter | null = null;
+let currentPlatform: ClaudePlatform | null = null;
 let observer: MutationObserver | null = null;
 let injectionTimeout: NodeJS.Timeout | null = null;
-let processedMessageIds = new Set<string>();
 let lastUrl = window.location.href;
 
-/**
- * Claude-specific button update logic
- */
+const seenUserMessages = new Map<string, Message>();
+const messagePosinset = new Map<string, number>(); // captured while element is in DOM
+
 function updateButtonToClaudeBookmarkedState(button: Element, iconContainer: HTMLElement): void {
   safeDOMOperation(() => {
     iconContainer.textContent = '🔖';
     button.setAttribute('aria-label', 'Bookmarked');
     button.setAttribute('title', 'Bookmarked');
-    
     (button as HTMLButtonElement).style.cursor = 'default';
-    (button as HTMLButtonElement).style.opacity = '0.8';
-    
     const newButton = button.cloneNode(true) as HTMLElement;
     button.parentNode?.replaceChild(newButton, button);
   }, 'Claude Button Update');
 }
 
-/**
- * Inject bookmark buttons - Claude version
- */
-function injectBookmarkButtons(platform: PlatformAdapter): number {
-  return safeExecute(() => {
+function injectBookmarkButtons(platform: ClaudePlatform): void {
+  safeExecute(() => {
     const messages = platform.getMessages();
-    
-    if (messages.length === 0) {
-      return 0;
-    }
-    
-    let injectedCount = 0;
-    
-    messages.forEach(message => {
+    if (messages.length === 0) return;
+
+    messages.filter(m => m.role === 'user').forEach(message => {
       try {
-        if (message.role !== 'user') {
-          return;
-        }
-        
-        if (bookmarkButtonExists(message.element)) {
-          if (!processedMessageIds.has(message.id)) {
-            processedMessageIds.add(message.id);
-          }
-          return;
-        }
-        
-        const bookmark = getBookmark(message.id); 
-        
+        seenUserMessages.set(message.id, message);
+
+        // Capture posinset while element is in DOM — used for messages tab navigation
+        const posinset = platform.getMessagePosinset(message.element);
+        if (posinset > 0) messagePosinset.set(message.id, posinset);
+
+        if (bookmarkButtonExists(message.element)) return;
+
+        const bookmark = getBookmark(message.id);
+
         platform.injectBookmarkButton(
           message,
-          (msg) => safeExecuteAsync(
-            () => handleBookmarkClick(msg, platform, updateButtonToClaudeBookmarkedState),
-            'Claude Bookmark Click'
-          ),
+          (msg) => {
+            // Capture posinset NOW while element is in the DOM
+            const posinset = platform.getMessagePosinset(msg.element);
+            safeExecuteAsync(
+              () => handleBookmarkClick(
+                msg,
+                platform,
+                updateButtonToClaudeBookmarkedState,
+                posinset > 0 ? { posinset } : undefined
+              ),
+              'Claude Bookmark Click'
+            );
+          },
           bookmark
         );
-        
-        // ✅ MARK MESSAGE AS PROCESSED - prevents duplicate injection
+
         message.element.setAttribute('data-bookmark-processed', 'true');
-        
-        processedMessageIds.add(message.id);
-        injectedCount++;
       } catch (error) {
-        console.warn('⚠️  Failed to inject button for message:', message.id, error);
+        console.warn('⚠️ Failed to inject button for message:', message.id, error);
       }
     });
-    
-    if (injectedCount > 0) {
-      //console.log(`📌 Injected ${injectedCount} new bookmark buttons`);
-    }
-    
-    return injectedCount;
-  }, 'Claude Button Injection', 0) || 0;
+  }, 'Claude Button Injection');
 }
 
-/**
- * Setup MutationObserver - Claude version
- */
-function setupMutationObserver(platform: PlatformAdapter): void {
+function updateSidebar(platform: ClaudePlatform, conversationId: string): void {
+  const stableMessages = Array.from(seenUserMessages.values());
+  const totalUserCount = platform.getTotalUserMessageCount() || seenUserMessages.size;
+
+  injectSidebar(
+    conversationId,
+    (bookmark) => {
+      if (currentPlatform) {
+        // Use posinset stored in bookmark — works across sessions
+        currentPlatform.scrollToMessage(bookmark.messageId, bookmark.posinset);
+      }
+    },
+    stableMessages,
+    (messageId) => {
+      if (currentPlatform) {
+        // Use stored posinset — captured when element was in DOM, reliable across virtualization
+        const posinset = messagePosinset.get(messageId);
+        currentPlatform.scrollToMessage(messageId, posinset);
+      }
+    },
+    totalUserCount
+  );
+}
+
+function setupMutationObserver(platform: ClaudePlatform, conversationId: string): void {
   safeExecute(() => {
     observer = new MutationObserver(safeMutationCallback(() => {
-      if (injectionTimeout) {
-        clearTimeout(injectionTimeout);
-      }
-      
+      if (injectionTimeout) clearTimeout(injectionTimeout);
       injectionTimeout = setTimeout(() => {
         injectBookmarkButtons(platform);
+        updateSidebar(platform, conversationId);
       }, 500);
     }, 'Claude MutationObserver'));
-    
+
     const contentArea = document.querySelector('main') || document.body;
-    
-    observer.observe(contentArea, {
-      childList: true,
-      subtree: true
-    });
-    
-   // console.log('👁️  MutationObserver active - watching for new messages');
+    observer.observe(contentArea, { childList: true, subtree: true });
   }, 'Claude MutationObserver Setup');
 }
 
-/**
- * Initialize Claude extension - ASYNC VERSION
- */
 async function initializeExtension(): Promise<void> {
   const platform = new ClaudePlatform();
-  
-  if (!platform.detectPlatform()) {
-    console.log('❌ Not on Claude');
-    return;
-  }
-  
+  if (!platform.detectPlatform()) return;
+
   currentPlatform = platform;
- // console.log('✅ Claude platform initialized');
-  
   const conversationId = platform.getConversationId();
-  //console.log(`📝 Conversation ID: ${conversationId}`);
-  
-  // LOAD BOOKMARKS FIRST
+
   await safeExecuteAsync(
     () => loadBookmarksForConversation(conversationId),
     'Claude Load Bookmarks'
   );
-  
-  const attemptInjection = () => {
-    const initialCount = injectBookmarkButtons(platform);
-    const totalMessages = platform.getMessages().length;
-   // console.log(`💬 Found ${totalMessages} messages, injected ${initialCount} buttons`);
-    return totalMessages;
-  };
-  
-  let totalMessages = attemptInjection();
-  
-  if (totalMessages === 0) {
-    console.log('⏳ No messages found yet, setting up retry logic...');
-    
+
+  injectBookmarkButtons(platform);
+  updateSidebar(platform, conversationId);
+
+  if (seenUserMessages.size === 0) {
     let retryCount = 0;
     const maxRetries = 10;
     const retryIntervals = [500, 1000, 1000, 2000, 2000, 3000, 3000, 5000, 5000, 5000];
-    
     const retry = () => {
-      if (retryCount >= maxRetries) {
-        console.log('⚠️ Gave up after 10 retries');
-        return;
-      }
-      
-      const delay = retryIntervals[retryCount];
-      retryCount++;
-      
+      if (retryCount >= maxRetries) return;
+      const delay = retryIntervals[retryCount++];
       setTimeout(() => {
-        //console.log(`🔄 Retry ${retryCount}/${maxRetries}`);
-        totalMessages = attemptInjection();
-        
-        if (totalMessages > 0) {
-         // console.log(`✅ Success! Found ${totalMessages} messages`);
-        } else {
-          retry();
-        }
+        injectBookmarkButtons(platform);
+        updateSidebar(platform, conversationId);
+        if (seenUserMessages.size === 0) retry();
       }, delay);
     };
-    
     retry();
   }
-  
-  setupMutationObserver(platform);
-  
-  injectSidebar(conversationId, (bookmark) =>
-    handleSidebarBookmarkClick(bookmark, currentPlatform)
-  );
+
+  setupMutationObserver(platform, conversationId);
 }
 
-/**
- * Handle URL changes
- */
 function handleUrlChange(): void {
   safeExecute(() => {
     const currentUrl = window.location.href;
-    
     if (currentUrl !== lastUrl) {
-      console.log('🔄 URL changed, re-initializing...');
       lastUrl = currentUrl;
-      
-      processedMessageIds.clear();
-      
+      seenUserMessages.clear();
+      messagePosinset.clear();
+      if (observer) { observer.disconnect(); observer = null; }
       setTimeout(() => {
-        safeExecuteAsync(
-          () => initializeExtension(),
-          'Claude Re-initialization'
-        );
+        safeExecuteAsync(() => initializeExtension(), 'Claude Re-initialization');
       }, 1000);
     }
   }, 'Claude URL Change');
 }
 
-// Watch for URL changes
 setInterval(() => safeExecute(handleUrlChange, 'Claude URL Check'), 1000);
-
-window.addEventListener('popstate', () => {
-  safeExecute(() => {
-   // console.log('🔄 Browser navigation detected');
-    handleUrlChange();
-  }, 'Claude Popstate');
-});
-
-// Initialize - USE ASYNC WRAPPER
-setTimeout(() => {
-  safeExecuteAsync(
-    () => initializeExtension(),
-    'Claude Initialization Wrapper'
-  );
-}, 1000);
-
-// Cleanup
-window.addEventListener('beforeunload', () => {
-  safeExecute(() => {
-    if (observer) {
-      observer.disconnect();
-    }
-    if (injectionTimeout) {
-      clearTimeout(injectionTimeout);
-    }
-  }, 'Claude Cleanup');
-});
+window.addEventListener('popstate', () => safeExecute(handleUrlChange, 'Claude Popstate'));
+setTimeout(() => safeExecuteAsync(() => initializeExtension(), 'Claude Initialization Wrapper'), 1000);
+window.addEventListener('beforeunload', () => safeExecute(() => {
+  if (observer) observer.disconnect();
+  if (injectionTimeout) clearTimeout(injectionTimeout);
+}, 'Claude Cleanup'));

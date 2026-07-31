@@ -4,67 +4,45 @@ import { BookmarkStorage } from '../../utils/storage';
 import { InputSanitizer } from '../../utils/sanitizer';
 import { PlatformAdapter } from '../../types/platform';
 
-/**
- * Check if bookmark button already exists for this message
- * Searches in message element and parent containers
- */
 export function bookmarkButtonExists(messageElement: HTMLElement): boolean {
-  // Strategy 1: Direct check in message element - most reliable
-  if (messageElement.querySelector('.bookmark-button')) {
-    return true;
-  }
-  
-  // Strategy 2: Check if message is already marked as processed
-  if (messageElement.hasAttribute('data-bookmark-processed')) {
-    return true;
-  }
-  
-  // Strategy 3: Check in parent containers (up to 5 levels) - KEEP YOUR ORIGINAL LOGIC
-  // This is for platforms where buttons might be in parent containers
+  if (messageElement.querySelector('.bookmark-button')) return true;
+  if (messageElement.hasAttribute('data-bookmark-processed')) return true;
   let searchElement: HTMLElement | null = messageElement;
   let attempts = 0;
-  
   while (searchElement && attempts < 5) {
-    // Look for bookmark button in this level
-    const button = searchElement.querySelector('.bookmark-button');
-    if (button) {
-      return true;
-    }
-    
+    if (searchElement.querySelector('.bookmark-button')) return true;
     searchElement = searchElement.parentElement;
     attempts++;
   }
-  
   return false;
 }
-/**
- * Shared state - used by all platforms
- */
+
 export let bookmarkedMessageIds = new Set<string>();
-export const bookmarksMap = new Map<string, Bookmark>();  // ADD THIS LINE
+export const bookmarksMap = new Map<string, Bookmark>();
 
 /**
- * Handle bookmark click - SHARED across all platforms
+ * Handle bookmark click.
+ * platformPosition carries platform-specific scroll position data
+ * (posinset for Claude, turnNumber for ChatGPT) captured at save time
+ * while the element is in the DOM. Stored in the Bookmark so navigation
+ * works reliably in future sessions without any DOM scanning.
  */
 export async function handleBookmarkClick(
   message: Message,
   currentPlatform: PlatformAdapter,
-  updateButtonCallback: (button: Element, iconContainer: HTMLElement) => void
+  updateButtonCallback: (button: Element, iconContainer: HTMLElement) => void,
+  platformPosition?: { posinset?: number; turnNumber?: number }
 ): Promise<void> {
-  console.log('🎯 Bookmark clicked!');
-  
   const rawNote = prompt('Add a note for this bookmark (optional):');
-  
-  if (rawNote === null) {
-    console.log('⏭️  Bookmark cancelled by user');
-    return;
-  }
-  
+  if (rawNote === null) return;
+
   const sanitizedNote = InputSanitizer.sanitizeText(rawNote, 500);
   const sanitizedMessageText = InputSanitizer.sanitizeText(message.text, 500);
-  
-  const bookmarkId = `bookmark_${Date.now()}_${crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substr(2, 9)}`;
-  
+
+  const bookmarkId = `bookmark_${Date.now()}_${
+    crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substr(2, 9)
+  }`;
+
   const bookmark: Bookmark = {
     id: bookmarkId,
     platform: currentPlatform.name,
@@ -74,111 +52,72 @@ export async function handleBookmarkClick(
     note: sanitizedNote,
     tags: [],
     timestamp: Date.now(),
-    url: window.location.href
+    url: window.location.href,
+    ...(platformPosition?.posinset && { posinset: platformPosition.posinset }),
+    ...(platformPosition?.turnNumber && { turnNumber: platformPosition.turnNumber }),
   };
-  
-  console.log('💾 Saving bookmark:', bookmark);
-  
+
   try {
     await BookmarkStorage.save(bookmark);
-    
-    // Add to tracked set
     bookmarkedMessageIds.add(message.id);
-    
-    // Find and update button
+    bookmarksMap.set(message.id, bookmark);
+
+    // Find and update the button visual state
     let button: Element | null = message.element.querySelector('.bookmark-button');
-    
     if (!button) {
       let searchElement: HTMLElement | null = message.element;
       let attempts = 0;
-      
       while (searchElement && attempts < 10) {
         button = searchElement.querySelector('.bookmark-button');
-        if (button) {
-          console.log(`✅ Found button at level ${attempts + 1}`);
-          break;
-        }
+        if (button) break;
         searchElement = searchElement.parentElement;
         attempts++;
       }
     }
-    
+
     if (button) {
-      // Find icon container - platform-specific logic passed via callback
-      let iconContainer: HTMLElement | null = button.querySelector('div');
-      if (!iconContainer) iconContainer = button.querySelector('span span');
-      if (!iconContainer) iconContainer = button.querySelector('span');
-      
-      if (iconContainer) {
-        updateButtonCallback(button, iconContainer);
-        console.log('✅ Button updated to bookmarked state');
-      }
+      const iconContainer: HTMLElement | null =
+        button.querySelector('div') ??
+        button.querySelector('span span') ??
+        button.querySelector('span');
+      if (iconContainer) updateButtonCallback(button, iconContainer);
     }
-    
-    //console.log('✅ Bookmark saved successfully!');
+
     window.dispatchEvent(new CustomEvent('bookmarkAdded', { detail: bookmark }));
-    
   } catch (error) {
     console.error('❌ Error saving bookmark:', error);
     alert('Failed to save bookmark. Please try again.');
   }
 }
 
-/**
- * Handle sidebar bookmark click - SHARED
- */
 export function handleSidebarBookmarkClick(
   bookmark: Bookmark,
   currentPlatform: PlatformAdapter | null
 ): void {
-  //console.log('🎯 Sidebar bookmark clicked:', bookmark.id);
-  
-  if (!currentPlatform) {
-    console.warn('⚠️  Platform not initialized');
-    return;
-  }
-  
-  const allMessageElements = document.querySelectorAll('[data-message-id]');
-  //console.log(`🔍 Total messages with IDs in DOM: ${allMessageElements.length}`);
-  
+  if (!currentPlatform) return;
   currentPlatform.scrollToMessage(bookmark.messageId);
 }
 
-/**
- * Load bookmarks for conversation - SHARED
- */
 export async function loadBookmarksForConversation(conversationId: string): Promise<void> {
   try {
     const bookmarks = await BookmarkStorage.getByConversation(conversationId);
-    //console.log(`📖 Found ${bookmarks.length} existing bookmarks for this conversation`);
-    
-    // Clear and rebuild lookup structures
     bookmarkedMessageIds.clear();
-    bookmarksMap.clear();  // ADD THIS
-    
+    bookmarksMap.clear();
     bookmarks.forEach(bookmark => {
       bookmarkedMessageIds.add(bookmark.messageId);
-      bookmarksMap.set(bookmark.messageId, bookmark);  // ADD THIS
+      bookmarksMap.set(bookmark.messageId, bookmark);
     });
-    
-    //console.log(`🔖 Tracking ${bookmarkedMessageIds.size} bookmarked messages`);
-    
   } catch (error) {
     console.error('❌ Error loading bookmarks:', error);
   }
 }
 
-/**
- * Get bookmark for a message (synchronous O(1) lookup)
- */
 export function getBookmark(messageId: string): Bookmark | null {
   return bookmarksMap.get(messageId) || null;
 }
-/**
- * Find bookmark for a message ID
- */
+
 export async function findBookmarkForMessage(
-  messageId: string, 
+  messageId: string,
   conversationId: string
 ): Promise<Bookmark | null> {
   try {
@@ -189,4 +128,3 @@ export async function findBookmarkForMessage(
     return null;
   }
 }
-

@@ -1,11 +1,10 @@
-import { CopilotPlatform } from '../platforms/copilot';
+import { GeminiPlatform } from '../platforms/gemini';
 import { PlatformAdapter, Message } from '../types/platform';
 import { injectSidebar } from '../sidebar/index';
 import {
   handleBookmarkClick,
   handleSidebarBookmarkClick,
   loadBookmarksForConversation,
-  bookmarkedMessageIds,
   bookmarkButtonExists,
   getBookmark
 } from './shared/base-content';
@@ -17,246 +16,143 @@ import {
   safeMutationCallback
 } from './shared/error-handler';
 
-//console.log('🔖 AI Chat Bookmarks - Copilot loaded!');
-
-// Setup global error handler first
-setupGlobalErrorHandler('Copilot');
+setupGlobalErrorHandler('Gemini');
 
 let currentPlatform: PlatformAdapter | null = null;
 let observer: MutationObserver | null = null;
 let injectionTimeout: NodeJS.Timeout | null = null;
-let processedMessageIds = new Set<string>();
 let lastUrl = window.location.href;
 
-/**
- * Copilot-specific button update logic
- */
-function updateButtonToCopilotBookmarkedState(button: Element, iconContainer: HTMLElement): void {
+let processedMessageIds = new Set<string>();
+const seenUserMessages = new Map<string, Message>();
+
+function updateButtonToGeminiBookmarkedState(button: Element, iconContainer: HTMLElement): void {
   safeDOMOperation(() => {
-    const icon = button.querySelector('span');
-    if (icon) {
-      icon.textContent = '🔖';
-    } else if (iconContainer) {
-      iconContainer.textContent = '🔖';
-    }
-    
+    const geminiIcon = button.querySelector('span[style*="font-size"]');
+    if (geminiIcon) { geminiIcon.textContent = '🔖'; } else if (iconContainer) { iconContainer.textContent = '🔖'; }
     button.setAttribute('aria-label', 'Bookmarked');
     button.setAttribute('title', 'Bookmarked');
-    
-    (button as HTMLButtonElement).style.cursor = 'default';
-    (button as HTMLButtonElement).style.opacity = '0.6';
-    
-    const newButton = button.cloneNode(true) as HTMLElement;
-    button.parentNode?.replaceChild(newButton, button);
-  }, 'Copilot Button Update');
+    const actualButton = button.tagName === 'BUTTON' ? button : button.querySelector('button');
+    if (actualButton) {
+      (actualButton as HTMLButtonElement).style.cursor = 'default';
+      const newButton = actualButton.cloneNode(true) as HTMLElement;
+      actualButton.parentNode?.replaceChild(newButton, actualButton);
+    }
+  }, 'Gemini Button Update');
 }
 
-/**
- * Inject bookmark buttons - Copilot version
- */
-function injectBookmarkButtons(platform: PlatformAdapter): number {
-  return safeExecute(() => {
+function injectBookmarkButtons(platform: PlatformAdapter): void {
+  safeExecute(() => {
     const messages = platform.getMessages();
-    
-    if (messages.length === 0) {
-      return 0;
-    }
-    
-    let injectedCount = 0;
-    
-    messages.forEach(message => {
+    if (messages.length === 0) return;
+
+    messages.filter(m => m.role === 'user').forEach(message => {
       try {
-        if (message.role !== 'user') {
+        seenUserMessages.set(message.id, message);
+
+        if (message.element.querySelector('.bookmark-button')) {
+          processedMessageIds.add(message.id);
           return;
         }
-        
-        if (bookmarkButtonExists(message.element)) {
-          if (!processedMessageIds.has(message.id)) {
-            processedMessageIds.add(message.id);
-          }
-          return;
-        }
-        
+
         const bookmark = getBookmark(message.id);
-        
         platform.injectBookmarkButton(
           message,
           (msg) => safeExecuteAsync(
-            () => handleBookmarkClick(msg, platform, updateButtonToCopilotBookmarkedState),
-            'Copilot Bookmark Click'
+            () => handleBookmarkClick(msg, platform, updateButtonToGeminiBookmarkedState),
+            'Gemini Bookmark Click'
           ),
           bookmark
         );
-         
-        // ✅ MARK MESSAGE AS PROCESSED - prevents duplicate injection
+
         message.element.setAttribute('data-bookmark-processed', 'true');
-        
         processedMessageIds.add(message.id);
-        injectedCount++;
       } catch (error) {
-        console.warn('⚠️  Failed to inject button for message:', message.id, error);
+        console.warn('⚠️ Failed to inject button for message:', message.id, error);
       }
     });
-    
-    if (injectedCount > 0) {
-      //console.log(`📌 Injected ${injectedCount} new bookmark buttons`);
-    }
-    
-    return injectedCount;
-  }, 'Copilot Button Injection', 0) || 0;
+  }, 'Gemini Button Injection');
 }
 
-/**
- * Setup MutationObserver - Copilot version
- */
-function setupMutationObserver(platform: PlatformAdapter): void {
+function updateSidebar(conversationId: string): void {
+  const stableMessages = Array.from(seenUserMessages.values());
+  injectSidebar(
+    conversationId,
+    (bookmark) => handleSidebarBookmarkClick(bookmark, currentPlatform),
+    stableMessages,
+    (messageId) => { if (currentPlatform) currentPlatform.scrollToMessage(messageId); },
+    processedMessageIds.size
+  );
+}
+
+function setupMutationObserver(platform: PlatformAdapter, conversationId: string): void {
   safeExecute(() => {
     observer = new MutationObserver(safeMutationCallback(() => {
-      if (injectionTimeout) {
-        clearTimeout(injectionTimeout);
-      }
-      
+      if (injectionTimeout) clearTimeout(injectionTimeout);
       injectionTimeout = setTimeout(() => {
         injectBookmarkButtons(platform);
-      }, 500);
-    }, 'Copilot MutationObserver'));
-    
+        updateSidebar(conversationId);
+      }, 800);
+    }, 'Gemini MutationObserver'));
+
     const contentArea = document.querySelector('main') || document.body;
-    
-    observer.observe(contentArea, {
-      childList: true,
-      subtree: true
-    });
-    
-    console.log('👁️  MutationObserver active - watching for new messages');
-  }, 'Copilot MutationObserver Setup');
+    observer.observe(contentArea, { childList: true, subtree: true });
+  }, 'Gemini MutationObserver Setup');
 }
 
-/**
- * Initialize Copilot extension - ASYNC VERSION
- */
 async function initializeExtension(): Promise<void> {
-  const platform = new CopilotPlatform();
-  
-  if (!platform.detectPlatform()) {
-    console.log('❌ Not on Copilot');
-    return;
-  }
-  
+  const platform = new GeminiPlatform();
+  if (!platform.detectPlatform()) return;
+
   currentPlatform = platform;
-  //console.log('✅ Copilot platform initialized');
-  
   const conversationId = platform.getConversationId();
-  //console.log(`📝 Conversation ID: ${conversationId}`);
-  
-  // LOAD BOOKMARKS FIRST
+
   await safeExecuteAsync(
     () => loadBookmarksForConversation(conversationId),
-    'Copilot Load Bookmarks'
+    'Gemini Load Bookmarks'
   );
-  
-  const attemptInjection = () => {
-    const initialCount = injectBookmarkButtons(platform);
-    const totalMessages = platform.getMessages().length;
-    //console.log(`💬 Found ${totalMessages} messages, injected ${initialCount} buttons`);
-    return totalMessages;
-  };
-  
-  let totalMessages = attemptInjection();
-  
-  if (totalMessages === 0) {
-    //console.log('⏳ No messages found yet, setting up retry logic...');
-    
+
+  injectBookmarkButtons(platform);
+  updateSidebar(conversationId);
+
+  if (processedMessageIds.size === 0) {
     let retryCount = 0;
     const maxRetries = 10;
     const retryIntervals = [500, 1000, 1000, 2000, 2000, 3000, 3000, 5000, 5000, 5000];
-    
     const retry = () => {
-      if (retryCount >= maxRetries) {
-        //console.log('⚠️ Gave up after 10 retries');
-        return;
-      }
-      
-      const delay = retryIntervals[retryCount];
-      retryCount++;
-      
+      if (retryCount >= maxRetries) return;
+      const delay = retryIntervals[retryCount++];
       setTimeout(() => {
-        //console.log(`🔄 Retry ${retryCount}/${maxRetries}`);
-        totalMessages = attemptInjection();
-        
-        if (totalMessages > 0) {
-          //console.log(`✅ Success! Found ${totalMessages} messages`);
-        } else {
-          retry();
-        }
+        injectBookmarkButtons(platform);
+        updateSidebar(conversationId);
+        if (processedMessageIds.size === 0) retry();
       }, delay);
     };
-    
     retry();
   }
-  
-  setupMutationObserver(platform);
-  
-  injectSidebar(conversationId, (bookmark) =>
-    handleSidebarBookmarkClick(bookmark, currentPlatform)
-  );
+
+  setupMutationObserver(platform, conversationId);
 }
 
-/**
- * Handle URL changes
- */
 function handleUrlChange(): void {
   safeExecute(() => {
     const currentUrl = window.location.href;
-    
     if (currentUrl !== lastUrl) {
-     // console.log('🔄 URL changed, re-initializing...');
       lastUrl = currentUrl;
-      
       processedMessageIds.clear();
-      //bookmarkedMessageIds.clear();
-      
-      if (observer) {
-        observer.disconnect();
-        observer = null;
-      }
-      
+      seenUserMessages.clear();
+      if (observer) { observer.disconnect(); observer = null; }
       setTimeout(() => {
-        safeExecuteAsync(
-          () => initializeExtension(),
-          'Copilot Re-initialization'
-        );
+        safeExecuteAsync(() => initializeExtension(), 'Gemini Re-initialization');
       }, 1000);
     }
-  }, 'Copilot URL Change');
+  }, 'Gemini URL Change');
 }
 
-// Watch for URL changes
-setInterval(() => safeExecute(handleUrlChange, 'Copilot URL Check'), 1000);
-
-window.addEventListener('popstate', () => {
-  safeExecute(() => {
-    //console.log('🔄 Browser navigation detected');
-    handleUrlChange();
-  }, 'Copilot Popstate');
-});
-
-// Initialize - USE ASYNC WRAPPER
-setTimeout(() => {
-  safeExecuteAsync(
-    () => initializeExtension(),
-    'Copilot Initialization Wrapper'
-  );
-}, 1000);
-
-// Cleanup
-window.addEventListener('beforeunload', () => {
-  safeExecute(() => {
-    if (observer) {
-      observer.disconnect();
-    }
-    if (injectionTimeout) {
-      clearTimeout(injectionTimeout);
-    }
-  }, 'Copilot Cleanup');
-});
+setInterval(() => safeExecute(handleUrlChange, 'Gemini URL Check'), 1000);
+window.addEventListener('popstate', () => safeExecute(handleUrlChange, 'Gemini Popstate'));
+setTimeout(() => safeExecuteAsync(() => initializeExtension(), 'Gemini Initialization Wrapper'), 1000);
+window.addEventListener('beforeunload', () => safeExecute(() => {
+  if (observer) observer.disconnect();
+  if (injectionTimeout) clearTimeout(injectionTimeout);
+}, 'Gemini Cleanup'));

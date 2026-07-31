@@ -1,6 +1,6 @@
 import { BasePlatform } from './base';
 import { Message } from '../types/platform';
-import { Bookmark } from '../types/bookmark';  // ADD THIS with other imports
+import { Bookmark } from '../types/bookmark';
 
 export class CopilotPlatform extends BasePlatform {
   name = 'copilot';
@@ -10,59 +10,60 @@ export class CopilotPlatform extends BasePlatform {
     return hostname === 'copilot.microsoft.com';
   }
   
- 
   getMessages(): Message[] {
-  //console.log('🔍 Scanning for Copilot messages...');
-  
-  // User messages only
-  const userMessages = document.querySelectorAll('[data-content="user-message"]');
-  
-  //console.log(`Found ${userMessages.length} user messages`);
-  
-  const messages: Message[] = [];
-  
-  userMessages.forEach((element, index) => {
-    const htmlElement = element as HTMLElement;
+    //console.log('🔍 Scanning for Copilot messages...');
     
-    // Find the parent container (the one with id ending in "-user-message")
-    const container = htmlElement.closest('[id$="-user-message"]') as HTMLElement;
-    if (!container) {
-      //console.warn('Could not find message container');
-      return;
-    }
+    // Find all user message containers by their ID pattern
+    const userContainers = document.querySelectorAll('[id$="-user-message"]');
     
-    const text = this.extractText(htmlElement).trim();
+    //console.log(`Found ${userContainers.length} user message containers`);
     
-    if (text.length > 0) {
-      let messageId = container.getAttribute('data-message-id');
+    const messages: Message[] = [];
+    
+    userContainers.forEach((container) => {
+      const htmlElement = container as HTMLElement;
+      
+      // Extract text from the data-content div
+      const contentDiv = htmlElement.querySelector('[data-content="user-message"]');
+      if (!contentDiv) {
+        return;
+      }
+      
+      const text = this.extractText(contentDiv as HTMLElement).trim();
+      
+      if (text.length === 0) {
+        return;
+      }
+      
+      // Check for existing message ID on container
+      let messageId = htmlElement.getAttribute('data-message-id');
       
       if (!messageId) {
         messageId = this.generateStableMessageId('user', text);
-        container.setAttribute('data-message-id', messageId);
-       // console.log(`🆕 Generated new ID for user message: ${messageId}`);
+        htmlElement.setAttribute('data-message-id', messageId);
+        //console.log(`🆕 Generated new ID for user message: ${messageId}`);
       }
       
       const message: Message = {
         id: messageId,
-        element: container,
+        element: htmlElement, // Use container as element
         text: text,
         role: 'user',
         timestamp: Date.now()
       };
       
       messages.push(message);
-    }
-  });
-  
-  messages.sort((a, b) => {
-    const rectA = a.element.getBoundingClientRect();
-    const rectB = b.element.getBoundingClientRect();
-    return rectA.top - rectB.top;
-  });
-  
- // console.log(`✅ Successfully parsed ${messages.length} messages total`);
-  return messages;
-}
+    });
+    
+    messages.sort((a, b) => {
+      const rectA = a.element.getBoundingClientRect();
+      const rectB = b.element.getBoundingClientRect();
+      return rectA.top - rectB.top;
+    });
+    
+    //console.log(`✅ Successfully parsed ${messages.length} messages total`);
+    return messages;
+  }
   
   private generateStableMessageId(role: string, text: string): string {
     const contentSample = text.substring(0, 300);
@@ -82,38 +83,55 @@ export class CopilotPlatform extends BasePlatform {
   }
   
   getConversationId(): string {
-    // URL: https://copilot.microsoft.com/chats/AvbyFyBmviid3YwNSFQv2
     const pathname = window.location.pathname;
     const match = pathname.match(/\/chats\/([^\/]+)/);
     return match ? match[1] : 'copilot_' + Date.now();
   }
   
-   injectBookmarkButton(message: Message, onClick: (message: Message) => void, bookmark: Bookmark | null): void {
+  injectBookmarkButton(message: Message, onClick: (message: Message) => void, bookmark: Bookmark | null): void {
+  // Check if button already exists
   if (message.element.querySelector('.bookmark-button')) {
     return;
   }
   
-  // Create action buttons container
-  const actionsContainer = document.createElement('div');
-  actionsContainer.className = 'flex items-center mt-2 copilot-bookmark-container';
-  actionsContainer.style.cssText = 'justify-content: flex-end; padding-right: 16px;';
+  // Find the message bubble
+  const messageBubble = message.element.querySelector('[data-content="user-message"]') as HTMLElement;
+  if (!messageBubble) {
+    console.warn('❌ No message bubble found for', message.id);
+    return;
+  }
+  
+  // Traverse up exactly 2 levels from bubble to get "Parent 2"
+  const parent0 = messageBubble.parentElement; // flex w-full flex-col gap-1
+  const parent1 = parent0?.parentElement;      // flex w-full items-start
+  const parent2 = parent1?.parentElement;      // flex w-full flex-col gap-1 (TARGET)
+  
+  if (!parent2) {
+    console.warn('❌ Could not find target container for', message.id);
+    return;
+  }
+  
+  const isBookmarked = bookmark !== null;
+  
+  // Create button container
+  const buttonContainer = document.createElement('div');
+  buttonContainer.className = 'flex items-start justify-end bookmark-button-container';
+  buttonContainer.style.cssText = isBookmarked 
+    ? 'margin-top: 4px; opacity: 1;' 
+    : 'margin-top: 4px; opacity: 0; transition: opacity 0.2s;';
   
   // Create bookmark button
   const button = document.createElement('button');
-  button.className = 'relative flex items-center text-foreground-800 fill-foreground-800 bg-transparent hover:bg-black/5 active:bg-black/3 text-sm justify-center size-9 rounded-xl bookmark-button';
+  button.className = 'bookmark-button flex items-center gap-1.5 text-xs text-foreground-600 hover:text-foreground-800 hover:bg-black/5 transition-all rounded-lg';
   button.setAttribute('type', 'button');
-  button.setAttribute('data-testid', 'bookmark-button');
-  
-  const isBookmarked = bookmark !== null;  // CHANGED: derive from bookmark object
+  button.style.cssText = 'background: none; border: none; padding: 4px 8px; cursor: pointer;';
   
   if (isBookmarked) {
     button.setAttribute('aria-label', 'Bookmarked');
-    button.setAttribute('title', bookmark.note || 'Bookmarked');  // CHANGED: show note in tooltip
-    button.style.cssText = 'cursor: default;';
+    button.setAttribute('title', bookmark.note || 'Bookmarked');
   } else {
     button.setAttribute('aria-label', 'Bookmark this message');
     button.setAttribute('title', 'Bookmark this message');
-    button.style.cssText = 'cursor: pointer;';
     
     button.addEventListener('click', (e) => {
       e.preventDefault();
@@ -124,14 +142,36 @@ export class CopilotPlatform extends BasePlatform {
   
   // Add icon
   const icon = document.createElement('span');
-  icon.style.cssText = 'font-size: 18px; line-height: 1;';
+  icon.style.cssText = 'font-size: 14px; line-height: 1;';
   icon.textContent = isBookmarked ? '🔖' : '📌';
   button.appendChild(icon);
   
-  actionsContainer.appendChild(button);
-  message.element.appendChild(actionsContainer);
+  // Add label
+  const label = document.createElement('span');
+  label.textContent = isBookmarked ? 'Bookmarked' : 'Bookmark';
+  button.appendChild(label);
   
-  // NO event listeners - CSS will handle it with pointer-events fix
+  buttonContainer.appendChild(button);
+  parent2.appendChild(buttonContainer);
+  
+  // Show on hover for non-bookmarked messages
+  if (!isBookmarked) {
+    const showButton = () => {
+      buttonContainer.style.opacity = '1';
+    };
+    const hideButton = () => {
+      buttonContainer.style.opacity = '0';
+    };
+    
+    message.element.addEventListener('mouseenter', showButton);
+    message.element.addEventListener('mouseleave', hideButton);
+    
+    // Store cleanup function for potential future use
+    (buttonContainer as any)._cleanup = () => {
+      message.element.removeEventListener('mouseenter', showButton);
+      message.element.removeEventListener('mouseleave', hideButton);
+    };
+  }
 }
   
   scrollToMessage(messageId: string): void {
@@ -145,7 +185,6 @@ export class CopilotPlatform extends BasePlatform {
       return;
     }
     
-    // Scroll to message
     messageElement.scrollIntoView({
       behavior: 'smooth',
       block: 'center'
@@ -159,7 +198,7 @@ export class CopilotPlatform extends BasePlatform {
     const originalTransition = element.style.transition;
     
     element.style.transition = 'background-color 0.3s ease';
-    element.style.backgroundColor = 'rgba(0, 120, 212, 0.15)'; // Microsoft blue tint
+    element.style.backgroundColor = 'rgba(0, 120, 212, 0.15)';
     
     setTimeout(() => {
       element.style.backgroundColor = originalBackground;
