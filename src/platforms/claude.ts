@@ -65,19 +65,16 @@ export class ClaudePlatform extends BasePlatform {
     });
 
     // --- User messages: pasted file / attachment ---
-    const actionBars = document.querySelectorAll('[data-message-action-bar]');
-    actionBars.forEach((bar) => {
-      const outerWrapper = bar.closest('div.group') as HTMLElement | null;
-      if (!outerWrapper) return;
-      if (outerWrapper.querySelector('[data-testid="user-message"]')) return;
-      if (outerWrapper.getAttribute('data-message-id')) return;
+    // Use data-cds="UserMessage" containers that don't have a plain text user-message
+    const userMsgContainers = document.querySelectorAll('[data-cds="UserMessage"]');
+    userMsgContainers.forEach((container) => {
+      const htmlContainer = container as HTMLElement;
+      // Skip if already captured as plain text message
+      if (htmlContainer.querySelector('[data-testid="user-message"]')) return;
+      if (htmlContainer.getAttribute('data-message-id')) return;
 
-      const article = outerWrapper.closest('[role="article"]');
-      if (article && article.querySelector('[data-test-render-count]')) return;
-
-      const bodyDiv = bar.closest('div.flex.flex-col.items-end') as HTMLElement | null;
-      const text = bodyDiv ? this.extractText(bodyDiv).trim() : '';
-      const fileLabel = outerWrapper.querySelector(
+      const text = this.extractText(htmlContainer).trim();
+      const fileLabel = htmlContainer.querySelector(
         '[aria-label*="pasted" i], [aria-label*="attachment" i], [aria-label*="file" i]'
       );
       const idSource = text.length > 0
@@ -85,8 +82,8 @@ export class ClaudePlatform extends BasePlatform {
         : fileLabel?.getAttribute('aria-label') || `attachment_${Date.now()}`;
 
       const messageId = this.generateStableMessageId('user', idSource);
-      outerWrapper.setAttribute('data-message-id', messageId);
-      messages.push({ id: messageId, element: outerWrapper, text: idSource, role: 'user', timestamp: Date.now() });
+      htmlContainer.setAttribute('data-message-id', messageId);
+      messages.push({ id: messageId, element: htmlContainer, text: idSource, role: 'user', timestamp: Date.now() });
     });
 
     // --- Assistant messages ---
@@ -144,39 +141,42 @@ export class ClaudePlatform extends BasePlatform {
   ): void {
     if (message.element.querySelector('.bookmark-button')) return;
 
-    let actionBarWrapper: HTMLElement | null = null;
+    // Walk up to find the user message container.
+    // New structure: div[data-cds="UserMessage"] contains both the message
+    // text and the [aria-label="Message actions"] toolbar.
+    // Old structure had [data-message-action-bar] which no longer exists.
+    let toolbar: HTMLElement | null = null;
     let searchElement: HTMLElement | null = message.element;
     let attempts = 0;
 
-    while (searchElement && attempts < 8) {
-      const found = searchElement.querySelector('[data-message-action-bar]') as HTMLElement | null;
-      if (found) { actionBarWrapper = found; break; }
-      if (searchElement.hasAttribute('data-message-action-bar')) { actionBarWrapper = searchElement; break; }
+    while (searchElement && attempts < 10) {
+      // New: data-cds="UserMessage" container
+      if (searchElement.getAttribute('data-cds') === 'UserMessage') {
+        toolbar = searchElement.querySelector('[aria-label="Message actions"]') as HTMLElement | null;
+        if (toolbar) break;
+      }
+      // Fallback: direct search at each level
+      toolbar = searchElement.querySelector('[aria-label="Message actions"]') as HTMLElement | null;
+      if (toolbar) break;
       searchElement = searchElement.parentElement;
       attempts++;
     }
 
-    if (!actionBarWrapper) {
-      console.warn('Could not find action bar wrapper for message:', message.id);
+    if (!toolbar) {
+      console.warn('Could not find action bar for message:', message.id);
       return;
     }
-
-    const toolbar = actionBarWrapper.querySelector(
-      '[role="toolbar"][aria-label="Message actions"], [aria-label="Message actions"]'
-    ) as HTMLElement | null;
 
     let insertTarget: HTMLElement | null = null;
     let insertBefore: HTMLElement | null = null;
 
-    if (toolbar) {
-      const firstFlexContainer = toolbar.querySelector('div.flex.items-center') as HTMLElement | null;
-      if (firstFlexContainer) {
-        insertTarget = firstFlexContainer;
-        insertBefore = firstFlexContainer.firstElementChild as HTMLElement | null;
-      }
+    const firstFlexContainer = toolbar.querySelector('div.flex.items-center') as HTMLElement | null;
+    if (firstFlexContainer) {
+      insertTarget = firstFlexContainer;
+      insertBefore = firstFlexContainer.firstElementChild as HTMLElement | null;
     }
 
-    if (!insertTarget) insertTarget = actionBarWrapper;
+    if (!insertTarget) insertTarget = toolbar;
 
     const isBookmarked = bookmark !== null;
     this.createAndInsertButton(insertTarget, insertBefore, onClick, message, isBookmarked, bookmark?.note);
